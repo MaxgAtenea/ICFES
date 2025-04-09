@@ -257,20 +257,3 @@ remove(
 #Guardamos el dataframe como un archivo csv en la carpeta SABERPRO_cleaned
 write.csv(temp_sbpro, "ICFES/data/SABERPRO_cleaned/base_sbpro.csv", row.names = FALSE)  # row.names = FALSE excludes row numbers
 
-
-
-############################################################3
-#Seccion para las regresiones una vez se cuenta con una base
-#de datos consolidada
-############################################################3
-
-data <- read_delim("ICFES/data/BD/bd.csv", escape_double = FALSE, trim_ws = TRUE)
-
-attach(data) #Definimos la BD con la que vamos a trabajar para no llamarla con cada variable
-
-estu_snies_prgmacademico<-factor(estu_snies_prgmacademico)  # La convertimos a factor
-
-
-mco_basico<-lm (punt_global_pro ~ punt_global_icfes)
-
-
