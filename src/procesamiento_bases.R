@@ -35,13 +35,12 @@ cols_saberpro <- c(
   "mod_comuni_escrita_punt"
 )
 
-
-
-
-
-
 #Ruta del directorio con los archivos
 data_dir <- "ICFES/data/SABERPRO_raw_reduced/"
+
+########################################################################### 
+#Lectura de los archivos con la informacion del saber pro desde el 2016 hasta el 2023-2"
+###########################################################################
 
 sbpro_20232 <- tryCatch(
   read_delim(paste0(data_dir, "saberpro_20232.txt"),
@@ -196,6 +195,11 @@ sbpro_2016 <- tryCatch(
   }
 )
 
+##############################
+#Arreglos menores a los datos
+##############################
+
+#Pasamos a minuscula los nombres de las columnas de los dataframes
 for (name in c("sbpro_20232", "sbpro_20231", "sbpro_20222", "sbpro_20221",
                "sbpro_2021", "sbpro_2020", "sbpro_2019", "sbpro_2018",
                "sbpro_2017", "sbpro_2016")) {
@@ -204,6 +208,7 @@ for (name in c("sbpro_20232", "sbpro_20231", "sbpro_20222", "sbpro_20221",
   assign(name, df)
 }
 
+#Parseamos algunas columnas a tipo integer
 for (name in c("sbpro_20232", "sbpro_20231", "sbpro_20222", "sbpro_20221",
                "sbpro_2021", "sbpro_2020", "sbpro_2019", "sbpro_2018",
                "sbpro_2017", "sbpro_2016")) {
@@ -215,8 +220,10 @@ for (name in c("sbpro_20232", "sbpro_20231", "sbpro_20222", "sbpro_20221",
   assign(name, df)
 }
 
+#Liberamos memoria
 remove(df)
 
+#Concatenamos los dataframes de cada periodo del saber pro
 sbpro <- bind_rows(
   sbpro_20232,
   sbpro_20231,
@@ -230,11 +237,10 @@ sbpro <- bind_rows(
   sbpro_2016
   ) 
 
-names (sbpro)=tolower(names(sbpro))
-
 #filtrar por los programas que se ofrecen en bogota
 temp_sbpro <- sbpro %>%filter(estu_prgm_codmunicipio == 11001)
 
+#liberamos memoria
 remove(
   sbpro_20232,
   sbpro_20231,
@@ -248,9 +254,15 @@ remove(
   sbpro_2016
 ) 
 
-
-# Save data frame as a CSV file
+#Guardamos el dataframe como un archivo csv en la carpeta SABERPRO_cleaned
 write.csv(temp_sbpro, "ICFES/data/SABERPRO_cleaned/base_sbpro.csv", row.names = FALSE)  # row.names = FALSE excludes row numbers
+
+
+
+############################################################3
+#Seccion para las regresiones una vez se cuenta con una base
+#de datos consolidada
+############################################################3
 
 data <- read_delim("ICFES/data/BD/bd.csv", escape_double = FALSE, trim_ws = TRUE)
 
