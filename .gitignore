@@ -1,9 +1,2 @@
 # Ignore everything inside the data/ directory
-data/*
-
-# But keep these specific subfolders
-!data/SABERPRO_cleaned/
-!data/SABER11_cleaned/
-!data/BD/
-!data/SNIES_CINE/
-
+data/
