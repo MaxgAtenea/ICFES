@@ -14,10 +14,11 @@
 
 
 #Cargar las librerias
-library(readr)
-library(dplyr)
+library(readr) #lectura de archivos
+library(dplyr) #manipulacion de dataframes
 library(tidyr)
-library(ggplot2)
+library(ggplot2) #para graficar
+library(nlme) #activamos la librería/paquete que nos permite estimar el modelo multinivel
 
 
 ##################################
@@ -78,7 +79,7 @@ cine_snies <- cine_snies %>%
 #Mirar los programas cuyos snies no cruzan
 ############################################
 
-#Miramos codigos snies de los programas de la BD cine_snies
+#Miramos los codigos snies de los programas en la BD cine_snies
 programas_bdcine_snies <- cine_snies %>%
   select(
     codigo_snies = `CÓDIGO SNIES DEL PROGRAMA`,
@@ -87,7 +88,7 @@ programas_bdcine_snies <- cine_snies %>%
   distinct() %>%
   mutate(from_cine_snies = TRUE) #agrega identificador de la BD donde vienen los datos
 
-#Miramos codigos snies de los programas de la BD icfes
+#Miramos codigos snies de los programas en la BD icfes
 programas_bdicfes <- icfes %>%
   select(
     codigo_snies = estu_snies_prgmacademico,
@@ -107,11 +108,11 @@ programas <- programas %>%
 remove(programas_bdcine_snies)
 remove(programas_bdicfes)
 
-#Programas que cruzaron
+#Programas no que cruzaron
 programas_non_matching <- programas %>%
   filter(is.na(from_cine_snies) | is.na(from_icfes))
 
-#Programas que no cruzaron
+#Programas que si cruzaron
 programas_matching <- programas %>%
   filter(!is.na(from_cine_snies) & !is.na(from_icfes))
 
@@ -143,16 +144,17 @@ data_summary <- data %>%
     names_sep = "___"
   )
 
-#Mirar la frecuencia 
+#Mirar la frecuencia de cada programa
+#Nota: recordar que el programa depende de la institucion.
 programas_freq <- data %>%
   count(estu_snies_prgmacademico, estu_prgm_academico, name = "frecuencia") %>%
   mutate(estu_prgm_academico = tolower(estu_prgm_academico)) %>%
   mutate(programa_label = paste0(estu_snies_prgmacademico, " - ", estu_prgm_academico))
 
-
+#Obtener los top 10 programas con mas frecuencia
 top_10 <- programas_freq %>% slice_max(frecuencia, n = 10)
 
-# Top 10
+# Graficar top 10
 ggplot(top_10, aes(x = reorder(programa_label, frecuencia), y = frecuencia)) +
   geom_bar(stat = "identity", fill = "forestgreen") +
   coord_flip() +
@@ -167,7 +169,8 @@ ggplot(top_10, aes(x = reorder(programa_label, frecuencia), y = frecuencia)) +
 #   labs(title = "Bottom 10 Programas", x = "Programa", y = "Frecuencia") +
 #   theme_minimal()
 
-
+#Graficar una densidad de la frecuencia de los programas
+#La grafica se utiliza para tener un panorama general de las frecuencias
 ggplot(programas_freq, aes(x = frecuencia)) +
   geom_density(fill = "skyblue", alpha = 0.6) +
   labs(
@@ -177,35 +180,119 @@ ggplot(programas_freq, aes(x = frecuencia)) +
   ) +
   theme_minimal()
 
-#Regresiones (calculo de VA)
+############################################
+#Data para el calcaculo del VA
 ############################################
 
-#Definimos la BD con la que vamos a trabajar para no llamarla con cada variable
-attach(data) 
 
-#Como primer ejercicio filtramos las observaciones con programas distintos a 
-#Medicina y cuya diferencia entre el saber pro y saber 11 esté en [4,8] años
-# data <- data %>%filter(
-#   dif_periodos>=40 &
-#   dif_periodos<=80 &
-#   estu_nucleo_pregrado!="MEDICINA"
-# )
+#Seleccionar las columnas de interes
+keys <- c(
+  "estu_consecutivo_icfes",
+  "estu_consecutivo_pro",
+  "INSTITUCIÓN DE EDUCACIÓN SUPERIOR (IES)",
+  "inst_nombre_institucion",
+  "estu_nucleo_pregrado",
+  "estu_snies_prgmacademico",
+  "NÚCLEO BÁSICO DEL CONOCIMIENTO (NBC)",
+  "ID CINE CAMPO AMPLIO",
+  "ID CINE CAMPO ESPECIFICO",
+  "ID CINE CAMPO DETALLADO",
+  "punt_global_pro",
+  "punt_global_icfes",
+  "dif_periodos"
+)
 
-# La convertimos a factor
-estu_snies_prgmacademico<-factor(estu_snies_prgmacademico)  
+keys_limpios <- c(
+  "estu_consecutivo_icfes",
+  "estu_consecutivo_pro",
+  "institucion_de_educacion_superior_ies",
+  "inst_nombre_institucion",
+  "estu_nucleo_pregrado",
+  "estu_snies_prgmacademico",
+  "nucleo_basico_del_conocimiento_nbc",
+  "id_cine_campo_amplio",
+  "id_cine_campo_especifico",
+  "id_cine_campo_detallado",
+  "punt_global_pro",
+  "punt_global_icfes",
+  "dif_periodos"
+)
+
+#Seleccionar las anteriores variables y quedarnos con las filas que si tienen
+#observaciones en punt_global_icfes
+data_filtrado <- data %>%
+  select(all_of(keys)) %>%
+  filter(
+    !is.na(punt_global_icfes),
+    dif_periodos >= 40,
+    dif_periodos <= 80,
+    estu_nucleo_pregrado != "MEDICINA"
+  )
+
+#renombrar las columnas
+colnames(data_filtrado) <- keys_limpios
+
+#Existen 54 NBC unicos
+#El problema con el campo NBC es que no es un id sino un string, entonces no es fiable
+length(unique(data_filtrado$nucleo_basico_del_conocimiento_nbc))
+
+#Existen 72 CINE detallados unicos
+length(unique(data_filtrado$id_cine_campo_detallado))
+
+#Conteo de observaciones por codigo cine_detallado
+conteo_campo_detallado <- data_filtrado %>%
+  count(id_cine_campo_detallado, name = "frecuencia")
+
+#Grafica de barras para visualizar el conteo por codigo cine detallado
+ggplot(conteo_campo_detallado, aes(x = reorder(id_cine_campo_detallado, -frecuencia), y = frecuencia)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = frecuencia), vjust = -0.2, angle = 90, size = 3) +
+  labs(
+    title = "Frecuencia por ID CINE Campo Detallado",
+    x = "ID CINE Campo Detallado",
+    y = "Frecuencia"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 
-#Filtrar por las filas que tienen observaciones para punt_global_icfes
-df_clean <- data %>%
-  filter(!is.na(punt_global_icfes))
 
-#Filtrar para un porgrama academico especifico
-base_programa <- subset(df_clean, estu_snies_prgmacademico=="4753")
-attach(base_programa)
+############################################
+#Data para el calcaculo del VA
+############################################
+
+#Liberar memoria
+remove(data,
+       data_summary,
+       programas,
+       programas_freq,
+       programas_matching,
+       programas_non_matching,
+       top_10,
+       conteo_campo_detallado
+)
+
+#Fijamos la BD con la que vamos a trabajar para no llamarla con cada variable
+attach(data_filtrado) 
+
+#estimamos la regresion multinivel con los codigos CINE
+multinivel_basico <- lme(
+  punt_global_pro ~ punt_global_icfes, random = ~ 1| id_cine_campo_detallado, data = data_filtrado
+  )
+
+#Ahora extraemos el listado de efectos aleatorios (valor agregado)
+coeff_va <- ranef(multinivel_basico)
+View(coeff_va)
+
+multinivel_basico[["coefficients"]][["random"]] # para visualizar el VA más directamente
 
 
-mco_prog_basico<-lm (punt_global_pro ~ punt_global_icfes)
-summary(residuals(mco_prog_basico)) 
+
+
+####################################################
+#TBD
+###################################################
+
 
 
 
