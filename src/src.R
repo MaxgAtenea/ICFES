@@ -30,9 +30,17 @@ library(ggplot2) #para graficar
 library(nlme) #activamos la librería/paquete que nos permite estimar el modelo multinivel
 library(stringi) #facilitar la manipulacion de caracteres
 library(stringr)#facilitar la manipulacion de caracteres
-library(plotly)
-
+library(plotly) #para graficas dinamicas
 library("lme4")#para la regresion de mixed models
+##############################################
+#Correr este bloque antes de cargar library(gt)
+# install.packages("gt")
+# install.packages("webshot2")  # better than webshot, works well
+# webshot2::install_phantomjs()  # only needs to be run once
+library(gt) #para guardar tablas
+##############################################
+
+
 
 ##################################
 #Constantes
@@ -54,7 +62,6 @@ library("lme4")#para la regresion de mixed models
 
 #Los 55 NBC listados por el SNIES en su pagina web 
 #Recuperado de: https://snies.mineducacion.gov.co/portal/DOCUMENTOS/Glosario/
-
 listado_nbc_men <- c(
   "Administración",
   "Agronomía",
@@ -185,6 +192,19 @@ icfes_summary <- icfes %>%
     names_sep = "___"
   )
 
+####Guardar la tabla
+#dividr la tabla en 2
+mitad <- ceiling(nrow(icfes_summary) / 2)
+# Primera mitad
+icfes_summary[1:mitad, ] %>%
+  gt() %>%
+  gtsave("ICFES/output/icfes_summary_parte1.png")
+# Segunda mitad
+icfes_summary[(mitad + 1):nrow(icfes_summary), ] %>%
+  gt() %>%
+  gtsave("ICFES/output/icfes_summary_parte2.png")
+remove(mitad)
+
 #Limpiar la columna estu_nucleo_pregrado y actualizarla en el dataframe
 #toda vez que sutilesas en la redaccion generan campos duplicados
 #estu_nucleo_pregrado representa el NBC
@@ -218,6 +238,9 @@ names(cine_snies) <- names(cine_snies) %>%
   gsub(" ", "_", .) %>%                       # reemplaza espacios con _
   gsub("\\(|\\)", "", .)                      #Elimina parentesis
 
+#codigos snies repetidos. 
+#No existen repetidos
+sum(duplicated(cine_snies$codigo_snies_del_programa))
 
 #Seleccionar las columnas de interes
 cine_snies <- cine_snies %>%
@@ -255,6 +278,21 @@ cine_snies_summary <- cine_snies %>%
     names_to = c("column", ".value"),
     names_sep = "___"
   )
+
+
+####Guardar la tabla
+#dividr la tabla en 2
+mitad <- ceiling(nrow(cine_snies_summary) / 2)
+# Primera mitad
+cine_snies_summary[1:mitad, ] %>%
+  gt() %>%
+  gtsave("ICFES/output/snies_summary_parte1.png")
+# Segunda mitad
+cine_snies_summary[(mitad + 1):nrow(cine_snies_summary), ] %>%
+  gt() %>%
+  gtsave("ICFES/output/snies_summary_parte2.png")
+remove(mitad)
+
 
 #Verificamos que no hayan duplicados de codigos SNIES en el df cine_snies
 sum(cine_snies[duplicated(cine_snies$codigo_snies_del_programa), ])
@@ -440,7 +478,7 @@ data_summary <- data %>%
 #Existe Una (1) observacion donde no coinciden los codigos de la IES
 sum(data$inst_cod_institucion != data$codigo_institucion, na.rm = TRUE)
 
-#Remover la unica observacion donde no coinciden los codigos de la IES
+#Remover las observaciones donde no coinciden los codigos de la IES
 data <- data %>%
   filter(inst_cod_institucion == codigo_institucion)
 
@@ -467,25 +505,49 @@ programas_freq <- data %>%
   arrange(desc(frecuencia))
 
 #Obtener los top 10 programas con mayor frecuencia
-top_10 <- programas_freq %>% slice_max(frecuencia, n = 10)
+top_10_programas <- programas_freq %>% slice_max(frecuencia, n = 10)
 
 # Graficar top 10
-ggplot(top_10, aes(x = reorder(programa_label, frecuencia), y = frecuencia)) +
+p <- ggplot(top_10_programas, aes(x = reorder(programa_label, frecuencia), y = frecuencia)) +
   geom_bar(stat = "identity", fill = "forestgreen") +
   coord_flip() +
   labs(title = "Top 10 Programas", x = "Programa", y = "Frecuencia") +
   theme_minimal()
+#mostrar la grafica
+show(p)
+
+ggsave(
+  filename = "ICFES/output/top_10_programas.png",
+  plot = p,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+
 
 #Graficar una densidad de la frecuencia de los programas
 #La grafica se utiliza para tener un panorama general de las frecuencias
-ggplot(programas_freq, aes(x = frecuencia)) +
+p <- ggplot(programas_freq, aes(x = frecuencia)) +
   geom_density(fill = "skyblue", alpha = 0.6) +
   labs(
-    x = "Frecuencia de aparición del programa",
+    x = "Cantidad de matriculados en un programa",
     y = "Densidad estimada",
     title = "Densidad de frecuencias de programas"
   ) +
   theme_minimal()
+
+#mostrar la grafica
+show(p)
+
+ggsave(
+  filename = "ICFES/output/densidad_frecuencia_programas.png",
+  plot = p,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
 
 ##################################
 #Frecuencia CINE Especifico
@@ -503,14 +565,26 @@ cine_freq <- data %>%
 #Obtener los top 10 cines especificos con mayor frecuencia
 top_10_cine <- cine_freq %>% slice_max(frecuencia, n = 10)
 
-# ggplot(top_10_cine, aes(x = reorder(id_cine_campo_especifico, frecuencia), y = frecuencia)) +
-#   geom_col(fill = "#69b3a2") +
-#   coord_flip() +
-#   geom_text(aes(label = frecuencia), hjust = -0.1, size = 4) +
-#   labs(title = "Top 10: Códigos CINE con mayor frecuencia",
-#        x = "ID CINE Campo Específico",
-#        y = "Frecuencia") +
-#   theme_minimal()
+p <- ggplot(top_10_cine, aes(x = reorder(cine_f_2013_ac_campo_especific, frecuencia), y = frecuencia)) +
+  geom_col(fill = "#69b3a2") +
+  coord_flip() +
+  geom_text(aes(label = frecuencia), hjust = -0.1, size = 4) +
+  labs(title = "Top 10: CINE específicos con mayor frecuencia",
+       x = "CINE Campo Específico",
+       y = "Frecuencia") +
+  theme_minimal()
+
+#mostrar la grafica
+show(p)
+
+ggsave(
+  filename = "ICFES/output/top_10_cine_especificos.png",
+  plot = p,
+  width = 15,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
 
 
 #Graficar una densidad de la frecuencia de los cines especificos
@@ -518,9 +592,9 @@ top_10_cine <- cine_freq %>% slice_max(frecuencia, n = 10)
 ggplot(cine_freq, aes(x = frecuencia)) +
   geom_density(fill = "skyblue", alpha = 0.6) +
   labs(
-    x = "Frecuencia de aparición del programa",
+    x = "Matriculados",
     y = "Densidad estimada",
-    title = "Densidad de frecuencias de programas"
+    title = "Distribución de matriculados por CINE especifico "
   ) +
   theme_minimal()
 
@@ -537,6 +611,8 @@ conteo_icine <- data %>%
   group_by(icine) %>%
   summarise(count = n()) %>%
   arrange(desc(count))
+
+
 
 ############################################
 #Data para el calcaculo del VA
@@ -567,6 +643,7 @@ columnas_regresion <- c(
   "estu_consecutivo_bdsaberpro",
   "icine",
   "codigo_institucion",
+  "inst_cod_institucion",
   "inst_nombre_institucion",
   "estu_nucleo_pregrado",
   "estu_snies_prgmacademico",
@@ -581,19 +658,44 @@ columnas_regresion <- c(
   "dif_periodos"
 )
 
-
-#Seleccionar las  variables en columnas_regresion y quedarnos con las filas que no tienen NA en
-#punt_global_icfes y en cine_f_2013_ac_campo_especific.
+#Seleccionar las  variables en columnas_regresion y quedarnos con las filas que:
+#no tienen NA en punt_global_icfes
+#no tienen NA en cine_f_2013_ac_campo_especific
+#su puntaje del saber pro es distinto de 0
+#si una persona hizo 2 saber pro, quedarse con la observacion con el saber pro mas viejo
+#eliminar los icine que tienen menos de 25 estudiantes
+#To do: el filtro del 40% de la poblacion total
+#sus cine_f_2013_ac_campo_especific estén en almenos 5 codigo_institucion
 data_filtrado <- data %>%
   select(all_of(columnas_regresion)) %>%
   filter(
-    !is.na(punt_global_bdsaber11),
-    !is.na(cine_f_2013_ac_campo_especific),
+    !is.na(punt_global_bdsaber11),#filtro de puntaje global saber 11 no sea na 
+    !is.na(punt_global_bdsaberpro), #filtro de puntaje saber pro no sea na
+    !is.na(cine_f_2013_ac_campo_especific), #filtro de que el cine especifico no sea na
+    punt_global_bdsaberpro!=0, #filtro de que el puntaje saber pro no sea 0
     (
       (cine_f_2013_ac_campo_detallado == "Medicina" & dif_periodos >= 40 & dif_periodos <= 90) |
-      (cine_f_2013_ac_campo_detallado != "Medicina" & dif_periodos >= 40 & dif_periodos <= 80) #filtro que hace el ICFES en su metodologia
+        (cine_f_2013_ac_campo_detallado != "Medicina" & dif_periodos >= 40 & dif_periodos <= 80)
     )
-  )
+  ) %>%
+  group_by(estu_consecutivo_bdsaberpro) %>%
+  slice_min(order_by = periodo_bdsaberpro, n = 1, with_ties = FALSE) %>% #filtro de no duplicados de saberpro
+  ungroup() %>% 
+  group_by(icine) %>%
+  filter(n() >= 25) %>% #filtro de minimo 25 estudiantes por icine
+  ungroup() %>% 
+  group_by(cine_f_2013_ac_campo_especific) %>% 
+  filter(n_distinct(codigo_institucion) >= 5) %>% #filtro de minimo 5 instituciones 
+  ungroup()
+
+#numero observaciones por icine
+#317 icine distintos
+observaciones_icine <- data_filtrado %>%
+  group_by(icine) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count))
+
+write.csv(observaciones_icine, "ICFES/output/n_observaciones_icine.csv", row.names = FALSE)
 
 #Resumen de los datos por tipo de dato y Nans
 data_filtrado_summary <- data_filtrado %>%
@@ -608,14 +710,26 @@ data_filtrado_summary <- data_filtrado %>%
     names_sep = "___"
   )
 
-#Existen 56 NBC unicos
+
+####Guardar la tabla
+
+data_filtrado_summary %>%
+  gt() %>%
+  gtsave("ICFES/output/data_summary.png")
+
+
+#Quedan 49 NBC unicos
 #Recordar que hay una categoria demas llamada "sin clasificar".
 #El problema con el campo NBC es que no es un id sino un string, entonces no es fiable
 length(unique(data_filtrado$nucleo_basico_del_conocimiento))
 length(unique(data_filtrado$estu_nucleo_pregrado))
 
-#Existen 27 CINE especificos unicos para este ejercicio
+#Existen 15 CINE especificos unicos para este ejercicio
 length(unique(data_filtrado$cine_f_2013_ac_campo_especific))
+
+
+#instituciones consideradas: 79
+n_distinct(data_filtrado$inst_nombre_institucion)
 
 ############################################
 #Data para el calcaculo del VA
@@ -632,14 +746,7 @@ remove(data,
 
 #Fijamos la BD con la que vamos a trabajar para no llamarla con cada variable
 attach(data_filtrado)
-
-#Tabla con frecuencia por ICINE
-conteo_icine <- data_filtrado %>%
-  count(icine, name = "n_observaciones") %>%
-  arrange(desc(n_observaciones))  #para ver primero los más frecuentes
-
-#Número total de valores únicos de ICINE
-n_distinct(data_filtrado$icine)
+icine <-factor(icine)  # La convertimos a factor
 
 
 ######
@@ -669,13 +776,92 @@ coefs_df <- data.frame(
 #modelo con lmer
 ######
 
+# Ajustar el modelo
 fit.multinivel <- lmer(punt_global_bdsaberpro ~ punt_global_bdsaber11 + (1 | icine), data = data_filtrado)
-summary(fit.multinivel)
 
+# Capturar el summary del modelo
+summary_output <- capture.output(summary(fit.multinivel))
+cat(paste(summary_output, collapse = "\n"))
+# Guardar como imagen
+png("ICFES/output/summary_model.png", width = 800, height = 600)  # Ajusta el tamaño según sea necesario
+grid.text(paste(summary_output, collapse = "\n"), x = 0, y = 1, just = "top", gp = gpar(fontsize = 10))
+dev.off()  # Cierra el dispositivo gráfico
+
+#random effects (valor agregado)
 coeff_va <- ranef(fit.multinivel)
 
-coeff_va$icine
+# Convertir los efectos aleatorios en un data.frame
+coefs_df <- as.data.frame(coeff_va$icine)  # 'icine' es el nombre de tu variable agrupadora
+coefs_df$icine <- rownames(coefs_df)  # Agregar el nombre del grupo (icine) como una columna
 
+# Ordenar por el valor del efecto aleatorio del intercepto
+coefs_df <- coefs_df %>%
+  arrange(`(Intercept)`)
+
+coefs_df <- coefs_df %>%
+  rename(coeficiente = `(Intercept)`)
+
+
+# Plot interactivo actualizado
+p <- plot_ly(
+  data = coefs_df,
+  x = ~`(Intercept)`,
+  y = ~reorder(icine, coeficiente),
+  type = "bar",
+  orientation = "h",
+  marker = list(color = ifelse(coefs_df$coeficiente >= 0, "tomato", "steelblue"))
+) %>%
+  layout(
+    title = list(text = "Valor Agregado de los programas de pregrado en Bogotá", x = 0.5),
+    xaxis = list(title = "Valor Agregado", zeroline = TRUE),
+    yaxis = list(title = "", tickfont = list(size = 8)),
+    margin = list(l = 150)
+  )
+
+# Mostrar el gráfico
+p
+
+#Guardar la grafica como un html
+htmlwidgets::saveWidget(p, file = "ICFES/output/valor_agregado_general.html")
+
+# Ordenamos y seleccionamos top y bottom 10 valores agregados
+top_bottom_coefs <- coefs_df %>%
+  slice_max(order_by = coeficiente, n = 10) %>%
+  bind_rows(slice_min(coefs_df, order_by = coeficiente, n = 10))
+
+#Graficar top y bottom 10 valores agregados
+p <- ggplot(top_bottom_coefs, aes(x = reorder(icine, coeficiente), y = coeficiente)) +
+  geom_col(fill = "tomato") +
+  geom_text(
+    aes(label = round(coeficiente, 2), hjust = ifelse(coeficiente > 0, -0.1, 1.1)),
+    size = 3
+  ) +
+  coord_flip() +
+  geom_hline(yintercept = 0, color = "gray30", linetype = "dashed") +
+  labs(
+    title = "Top y Bottom 10 Valores Agregados",
+    x = NULL,
+    y = "Coeficiente"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),  # Centrar título
+    plot.title.position = "plot"             # Asegura que el título se trate como parte del plot
+  )
+
+# Guardar la gráfica
+ggsave(
+  filename = "ICFES/output/top_bottom_10_valores_agregados.jpg",
+  plot = p,   # o puedes nombrar tu plot si lo guardaste como objeto
+  width = 20,
+  height = 6,
+  dpi = 300,
+  bg = "white" 
+)
+######################
+#TO do: Revisar
+#Pruebas de normalidad
+######################
 par(mfrow= c(1,2))
 qqnorm(ranef(fit.multinivel)$icine[,"(Intercept)"],
        main = "Random Effects")
