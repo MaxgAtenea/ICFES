@@ -32,6 +32,8 @@ library(stringi) #facilitar la manipulacion de caracteres
 library(stringr)#facilitar la manipulacion de caracteres
 library(plotly)
 
+library("lme4")#para la regresion de mixed models
+
 ##################################
 #Constantes
 ##################################
@@ -501,14 +503,14 @@ cine_freq <- data %>%
 #Obtener los top 10 cines especificos con mayor frecuencia
 top_10_cine <- cine_freq %>% slice_max(frecuencia, n = 10)
 
-ggplot(top_10_cine, aes(x = reorder(id_cine_campo_especifico, frecuencia), y = frecuencia)) +
-  geom_col(fill = "#69b3a2") +
-  coord_flip() +
-  geom_text(aes(label = frecuencia), hjust = -0.1, size = 4) +
-  labs(title = "Top 10: Códigos CINE con mayor frecuencia",
-       x = "ID CINE Campo Específico",
-       y = "Frecuencia") +
-  theme_minimal()
+# ggplot(top_10_cine, aes(x = reorder(id_cine_campo_especifico, frecuencia), y = frecuencia)) +
+#   geom_col(fill = "#69b3a2") +
+#   coord_flip() +
+#   geom_text(aes(label = frecuencia), hjust = -0.1, size = 4) +
+#   labs(title = "Top 10: Códigos CINE con mayor frecuencia",
+#        x = "ID CINE Campo Específico",
+#        y = "Frecuencia") +
+#   theme_minimal()
 
 
 #Graficar una densidad de la frecuencia de los cines especificos
@@ -593,35 +595,8 @@ data_filtrado <- data %>%
     )
   )
 
-
-#Existen 56 NBC unicos
-#Recordar que hay una categoria demas llamada "sin clasificar".
-#El problema con el campo NBC es que no es un id sino un string, entonces no es fiable
-length(unique(data_filtrado$nucleo_basico_del_conocimiento))
-length(unique(data_filtrado$estu_nucleo_pregrado))
-
-#Existen 27 CINE especificos unicos para este ejercicio donde se excluye medicina
-length(unique(data_filtrado$cine_f_2013_ac_campo_especific))
-
-############################################
-#Data para el calcaculo del VA
-############################################
-
-#Liberar memoria
-remove(data,
-       data_summary,
-       programas,
-       programas_freq,
-       programas_matching,
-       programas_non_matching,
-       top_10
-)
-
-#Fijamos la BD con la que vamos a trabajar para no llamarla con cada variable
-attach(data_filtrado)
-
 #Resumen de los datos por tipo de dato y Nans
-data_filtrado %>%
+data_filtrado_summary <- data_filtrado %>%
   summarise(across(everything(), list(
     class = ~ class(.)[1],
     NA_count = ~ sum(is.na(.)),
@@ -633,6 +608,31 @@ data_filtrado %>%
     names_sep = "___"
   )
 
+#Existen 56 NBC unicos
+#Recordar que hay una categoria demas llamada "sin clasificar".
+#El problema con el campo NBC es que no es un id sino un string, entonces no es fiable
+length(unique(data_filtrado$nucleo_basico_del_conocimiento))
+length(unique(data_filtrado$estu_nucleo_pregrado))
+
+#Existen 27 CINE especificos unicos para este ejercicio
+length(unique(data_filtrado$cine_f_2013_ac_campo_especific))
+
+############################################
+#Data para el calcaculo del VA
+############################################
+
+#Liberar memoria
+remove(data,
+       data_summary,
+       programas_freq,
+       programas_matching,
+       programas_non_matching,
+       top_10
+)
+
+#Fijamos la BD con la que vamos a trabajar para no llamarla con cada variable
+attach(data_filtrado)
+
 #Tabla con frecuencia por ICINE
 conteo_icine <- data_filtrado %>%
   count(icine, name = "n_observaciones") %>%
@@ -640,6 +640,11 @@ conteo_icine <- data_filtrado %>%
 
 #Número total de valores únicos de ICINE
 n_distinct(data_filtrado$icine)
+
+
+######
+#modelo con lme
+######
 
 #estimamos la regresion multinivel con los codigos CINE
 multinivel_basico <- lme(
@@ -650,7 +655,7 @@ multinivel_basico <- lme(
 summary(multinivel_basico)
 coeff_va <- ranef(multinivel_basico)
 
-#visualizar el VA más directamente
+#visualizar el VA directamente
 multinivel_basico[["coefficients"]][["random"]] 
 
 # Convertimos a un data frame con las etiquetas como columna
@@ -659,9 +664,70 @@ coefs_df <- data.frame(
   coeficiente = coeff_va[[1]]
 )
 
+
+######
+#modelo con lmer
+######
+
+fit.multinivel <- lmer(punt_global_bdsaberpro ~ punt_global_bdsaber11 + (1 | icine), data = data_filtrado)
+summary(fit.multinivel)
+
+coeff_va <- ranef(fit.multinivel)
+
+coeff_va$icine
+
+par(mfrow= c(1,2))
+qqnorm(ranef(fit.multinivel)$icine[,"(Intercept)"],
+       main = "Random Effects")
+qqnorm(resid(fit.multinivel), main="Residuals")
+qqline(residuals(fit.multinivel))
+plot(fit.multinivel)
+
+par(mfrow = c(1, 1))
+
+resid_sample <- sample(residuals(fit.multinivel), size = 500)
+qqnorm(resid_sample)
+qqline(resid_sample)
+
+
+shapiro.test(sample(residuals(fit.multinivel), 5000))
+shapiro.test(unlist(ranef(multinivel_basico)))
+
+ggplot(data.frame(resid = residuals(fit.multinivel)), aes(x = resid)) +
+  geom_density(fill = "lightblue") +
+  stat_function(fun = dnorm,
+                args = list(mean = mean(residuals(fit.multinivel)), 
+                            sd = sd(residuals(fit.multinivel))),
+                color = "red", linetype = "dashed") +
+  labs(title = "Density of Residuals vs Normal Curve")
+
+
+
+####
+#eliminando outliers
+####
+data_filtrado_sin_outliers <- data_filtrado %>%
+  filter(punt_global_bdsaberpro >= quantile(punt_global_bdsaberpro, 0.25) - 1.5 * IQR(punt_global_bdsaberpro) &
+           punt_global_bdsaberpro <= quantile(punt_global_bdsaberpro, 0.75) + 1.5 * IQR(punt_global_bdsaberpro))
+
+fit.multinivel <- lmer(punt_global_bdsaberpro ~ punt_global_bdsaber11 + (1 | icine), data = data_filtrado_sin_outliers)
+summary(fit.multinivel)
+shapiro.test(sample(residuals(fit.multinivel), 5000))
+
+
 ####################################################
 #Graficas
 ###################################################
+
+# Density plot de Puntaje Global del Saber Pro
+ggplot(data_filtrado_sin_outliers, aes(x = punt_global_bdsaberpro)) +
+  geom_density(fill = "skyblue", color = "black") +
+  labs(
+    title = "Density Plot of Punt Global Saber Pro",
+    x = "Punt Global Saber Pro",
+    y = "Density"
+  ) +
+  theme_minimal()
 
 #Scatter plot Saber 11 vs Saber pro a nivel individual
 ggplot(data_filtrado, aes(x = punt_global_bdsaber11, y = punt_global_bdsaberpro)) +
