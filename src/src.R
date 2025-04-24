@@ -31,7 +31,7 @@ library(nlme) #activamos la librería/paquete que nos permite estimar el modelo 
 library(stringi) #facilitar la manipulacion de caracteres
 library(stringr)#facilitar la manipulacion de caracteres
 library(plotly) #para graficas dinamicas
-library("lme4")#para la regresion de mixed models
+library(lme4)#para la regresion de mixed models
 ##############################################
 #Correr este bloque antes de cargar library(gt)
 # install.packages("gt")
@@ -46,19 +46,20 @@ library(gt) #para guardar tablas
 #Constantes
 ##################################
 
-# variables_cine_snies <- c(
-#   "codigo_snies_del_programa",
-#   "programa_academico",
-#   "nucleo_basico_del_conocimiento_nbc",
-#   "id_cine_campo_amplio",
-#   "id_cine_campo_especifico",
-#   "id_cine_campo_detallado",
-#   "codigo_del_municipio_programa",
-#   "codigo_de_la_institucion",
-#   "institucion_de_educacion_superior_ies",
-#   "ies_acreditada",
-#   "caracter_ies"
-# )
+#Variables del excel del snies que viene con los id de cada cine
+variables_codigo_cine <- c(
+  "codigo_snies_del_programa",
+  "programa_academico",
+  "nucleo_basico_del_conocimiento_nbc",
+  "id_cine_campo_amplio",
+  "id_cine_campo_especifico",
+  "id_cine_campo_detallado",
+  "codigo_del_municipio_programa",
+  "codigo_de_la_institucion",
+  "institucion_de_educacion_superior_ies",
+  "ies_acreditada",
+  "caracter_ies"
+)
 
 #Los 55 NBC listados por el SNIES en su pagina web 
 #Recuperado de: https://snies.mineducacion.gov.co/portal/DOCUMENTOS/Glosario/
@@ -120,6 +121,7 @@ listado_nbc_men <- c(
   "Zootecnia"
 )
 
+#variables del excel de snies que viene sin los codigos cine pero si con los nombres
 variables_cine_snies <- c(
   "codigo_institucion",
   "codigo_institucion_padre",
@@ -216,16 +218,28 @@ icfes$estu_nucleo_pregrado <- icfes$estu_nucleo_pregrado %>%
   str_to_title()                              # Capitalizar la primera letra de cada palabra
 
 
-
 ############
 #NBC y CINE
 ############
-# #Leer base con codigos snies y cine de los programas
-# cine_snies <- read_delim("ICFES/data/SNIES_CINE/codigos_snies_cine_2023.csv",
-#                          escape_double = FALSE,
-#                          trim_ws = TRUE,
-#                          delim=";",
-#                          locale = locale(encoding = "Latin1"))
+#Leer base con codigos snies y cine de los programas
+codigos_cine <- read_delim("ICFES/data/SNIES_CINE/codigos_snies_cine_2023.csv",
+                         escape_double = FALSE,
+                         trim_ws = TRUE,
+                         delim=";",
+                         locale = locale(encoding = "Latin1"))
+
+#Limpiar el nombre de las columnas de cine_sines
+names(codigos_cine) <- names(codigos_cine) %>%
+  stri_trans_general("Latin-ASCII") %>%       # elimina tildes
+  tolower() %>%                               # convierte a minúsculas
+  gsub(" ", "_", .) %>%                       # reemplaza espacios con _
+  gsub("\\(|\\)", "", .)                      #Elimina parentesis
+
+
+#Seleccionar las columnas de interes
+codigos_cine <- codigos_cine %>%
+  select(all_of(variables_codigo_cine))
+
 
 #Leer base con codigos snies y cine de los programas
 #Base a nivel nacional
@@ -238,14 +252,35 @@ names(cine_snies) <- names(cine_snies) %>%
   gsub(" ", "_", .) %>%                       # reemplaza espacios con _
   gsub("\\(|\\)", "", .)                      #Elimina parentesis
 
-#codigos snies repetidos. 
-#No existen repetidos
-sum(duplicated(cine_snies$codigo_snies_del_programa))
-
 #Seleccionar las columnas de interes
 cine_snies <- cine_snies %>%
   select(all_of(variables_cine_snies))
 
+#codigos snies repetidos. 
+#No existen repetidos
+sum(duplicated(cine_snies$codigo_snies_del_programa))
+
+#############
+#  Unir las dos paginas del snies
+#############
+
+base_cine <- inner_join(
+  cine_snies,
+  codigos_cine,
+  by = "codigo_snies_del_programa")
+
+write_csv(base_cine, "ICFES/data/SNIES_CINE_cleaned/base_cine.csv")
+
+
+#############
+
+
+
+#Filtrar por los programas que se ofrecen en Bogota
+# cine_snies <- cine_snies %>%
+#   filter(codigo_del_municipio_programa == 11001)
+cine_snies <- cine_snies %>%
+  filter(municipio_oferta_programa == "Bogotá, D.C.")
 
 #Mirar codigos CINE unicos por nivel
 #CINE campos amplios son 11 los reportados por el DANE
@@ -260,11 +295,6 @@ cine_snies %>%
     n_campo_detallado = n_distinct(cine_f_2013_ac_campo_detallado)
   )
 
-#Filtrar por los programas que se ofrecen en Bogota
-# cine_snies <- cine_snies %>%
-#   filter(codigo_del_municipio_programa == 11001)
-cine_snies <- cine_snies %>%
-  filter(municipio_oferta_programa == "Bogotá, D.C.")
 
 #Resumen de los datos por tipo de dato y Nans
 cine_snies_summary <- cine_snies %>%
@@ -319,12 +349,12 @@ cine_snies %>%
   summarise(valores_unicos = n_distinct(nucleo_basico_del_conocimiento))
 
 
-#Guardar los valores unicos de nbc en el df cine_snies
+#Guardar los valores unicos de nbc del df cine_snies
 nbc_cine_snies <- cine_snies %>%
   distinct(nucleo_basico_del_conocimiento) %>%
   arrange(nucleo_basico_del_conocimiento)
 
-#Guardar los valores unicos de nbc en el df icfes
+#Guardar los valores unicos de nbc del df icfes
 nbc_icfes <- icfes %>%
   distinct(estu_nucleo_pregrado) %>%
   arrange(estu_nucleo_pregrado)
@@ -396,7 +426,7 @@ remove(programas_bdcine_snies)
 remove(programas_bdicfes)
 
 
-#Programas que si cruzaron
+#Programas que si cruzaron entre la basa de datos del icfes y del snies
 #cruzaron 1225
 programas_matching <- programas %>%
   filter(!is.na(from_cine_snies) & !is.na(from_icfes))
@@ -438,6 +468,11 @@ data <- left_join(
   cine_snies,
   by = join_by(estu_snies_prgmacademico==codigo_snies_del_programa)
 )
+
+#verificamos que los valores de nivel academico sea pregrado o NA 
+unique(data$nivel_academico)
+#verificamos que los valores de nivel de formacion sea universitario o NA 
+unique(data$nivel_de_formacion)
 
 #liberamos memoria
 remove(cine_snies)
@@ -481,13 +516,6 @@ sum(data$inst_cod_institucion != data$codigo_institucion, na.rm = TRUE)
 #Remover las observaciones donde no coinciden los codigos de la IES
 data <- data %>%
   filter(inst_cod_institucion == codigo_institucion)
-
-#Crear la variable ICINE que pretende ser el analogo al INBC
-# data <- data %>%
-#   mutate(icine = paste(codigo_de_la_institucion, id_cine_campo_especifico, sep = "_"))
-data <- data %>%
-  mutate(icine = paste(codigo_institucion, cine_f_2013_ac_campo_especific, sep = "_"))
-
 
 ##################################
 #Analizar cuantos icines habrian dependiendo de la jerarquia cine escogida
@@ -539,6 +567,15 @@ p_interactivo <- ggplotly(p)
 p_interactivo
 
 remove(conteo_amplio, conteo_especifico, conteo_detallado, data_temp, p_interactivo,p)
+
+
+#Crear la variable ICINE que pretende ser el analogo al INBC
+# data <- data %>%
+#   mutate(icine = paste(codigo_de_la_institucion, id_cine_campo_especifico, sep = "_"))
+data <- data %>%
+  mutate(icine = paste(codigo_institucion, cine_f_2013_ac_campo_especific, sep = "_"),
+         icine_detall = paste(codigo_institucion, cine_f_2013_ac_campo_detallado, sep = "_")
+  )
 
 ##################################
 #Estadisticas descriptivas
@@ -664,7 +701,9 @@ conteo_icine <- data %>%
   summarise(count = n()) %>%
   arrange(desc(count))
 
-
+############################################
+#             VALOR AGREGADO
+############################################
 
 ############################################
 #Data para el calcaculo del VA
@@ -734,7 +773,6 @@ data_filtrado <- data %>%
   slice_min(order_by = periodo_bdsaberpro, n = 1, with_ties = FALSE) %>% #filtro de no duplicados de saberpro
   ungroup() 
 
-
 data_filtrado <- data_filtrado %>% 
   group_by(icine) %>%
   filter(n() >= 25) %>% #filtro de minimo 25 estudiantes por icine
@@ -783,6 +821,7 @@ length(unique(data_filtrado$cine_f_2013_ac_campo_especific))
 
 #instituciones consideradas: 74
 n_distinct(data_filtrado$inst_nombre_institucion)
+n_distinct(data_filtrado$codigo_institucion)
 
 
 ############################################
@@ -866,26 +905,254 @@ coefs_df <- coefs_df %>%
 
 # Ordenar por el valor del efecto aleatorio del intercepto
 coefs_df <- coefs_df %>%
-  arrange(`(Intercept)`)
+  arrange(coeficiente)
 
-# Plot interactivo actualizado
+#adicionamos al dataframe los resultados de la regresion
+data_filtrado <- inner_join(data_filtrado,coefs_df, by = c("icine"))
+
+#Crear un nuevo dataframe con observaciones unicas de icine
+data_icine_unico <- data_filtrado %>%
+  distinct(icine, .keep_all = TRUE) %>% arrange(desc(coeficiente))
+
+
+###############################
+# TOP Y BOTTOM 10 IES segun VA Promedio
+###############################
+
+###########
+#  Por Universidad
+###########
+
+#Promedio de los valores agregados por universidades
+va_universidades <- data_icine_unico %>%
+  group_by(inst_nombre_institucion) %>%
+  summarise(avg_coef = mean(coeficiente, na.rm = TRUE)) %>%
+  arrange(desc(avg_coef))
+
+# Top y bottom 10 avg_coef por unviersidad
+va_top_bottom <- bind_rows(
+  slice_max(va_universidades, avg_coef, n = 10),
+  slice_min(va_universidades, avg_coef, n = 10)
+)
+
+#Graficar top y bottom 10 univeridades según va promedio
+p <- ggplot(va_top_bottom, aes(x = reorder(inst_nombre_institucion, avg_coef), y = avg_coef, fill = avg_coef > 0)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  labs(
+    title = "Top y Bottom 10 universidades según valor agregado promedio",
+    x = "Universidad",
+    y = "Valor Agregado Promedio"
+  ) +
+  scale_fill_manual(values = c("steelblue", "tomato")) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 8)  # Ajustá este valor según lo que necesites
+  )
+
+show(p)
+# Guardar la gráfica
+ggsave(
+  filename = "ICFES/output/top_bottom_10_vaPromedio_universidades.png",
+  plot = p,   # o puedes nombrar tu plot si lo guardaste como objeto
+  width = 20,
+  height = 6,
+  dpi = 300,
+  bg = "white" 
+)
+
+#### BOX PLOT Top y bottom 10 IES:
+
+# Filtrar el data_icine_unico para solo incluir universidades del top y bottom 10
+data_boxplot <- data_icine_unico %>%
+  filter(inst_nombre_institucion %in% va_top_bottom$inst_nombre_institucion) %>%
+  left_join(select(va_top_bottom, inst_nombre_institucion, avg_coef), by = "inst_nombre_institucion") %>%
+  mutate(color = ifelse(avg_coef > 0, "orange", "steelblue")) %>%
+  mutate(inst_nombre_institucion = str_to_sentence(tolower(inst_nombre_institucion)))
+
+# Calcular el número de observaciones por universidad
+obs_count <- data_boxplot %>%
+  group_by(inst_nombre_institucion) %>%
+  summarise(n_obs = n(), .groups = "drop")
+
+# Unir el conteo al dataframe para graficar
+data_boxplot <- left_join(data_boxplot, obs_count, by = "inst_nombre_institucion")
+
+# Crear la gráfica de boxplots
+p_boxplot <- ggplot(data_boxplot, aes(x = reorder(inst_nombre_institucion, avg_coef), y = coeficiente, fill = color)) +
+  geom_boxplot() +
+  # Etiqueta del número de observaciones
+  geom_text(
+    data = distinct(data_boxplot, inst_nombre_institucion, n_obs),
+    aes(x = inst_nombre_institucion, y = max(data_boxplot$avg_coef, na.rm = TRUE) + 0.2, label = paste0("n = ", n_obs)),
+    inherit.aes = FALSE,
+    size = 3,
+    hjust = 0
+  ) +
+  coord_flip() +
+  scale_fill_identity() +
+  labs(
+    title = "Distribución del Valor Agregado por Universidad (Top y Bottom 10)",
+    x = "Universidad",
+    y = "Valor Agregado"
+  ) +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 8))
+
+
+p_boxplot
+
+###########
+#  Por CINE-Específico
+###########
+
+#Promedio de los valores agregados por universidades
+va_CINE <- data_icine_unico %>%
+  group_by(cine_f_2013_ac_campo_especific) %>%
+  summarise(avg_coef = mean(coeficiente, na.rm = TRUE)) %>%
+  arrange(desc(avg_coef))
+
+#Graficar CINE según va promedio
+p <- ggplot(va_CINE, aes(x = reorder(cine_f_2013_ac_campo_especific, avg_coef, FUN = median), 
+                               y = avg_coef, fill = avg_coef > 0)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  labs(
+    title = "CINE-Específico según valor agregado promedio",
+    x = "CINE",
+    y = "Valor Agregado Promedio"
+  ) +
+  scale_fill_manual(values = c("steelblue", "tomato")) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 8)  # Ajusta este valor según lo que necesites
+  )
+
+show(p)
+# Guardar la gráfica
+ggsave(
+  filename = "ICFES/output/vaPromedio_cineEspecifico.png",
+  plot = p,   # o puedes nombrar tu plot si lo guardaste como objeto
+  width = 20,
+  height = 6,
+  dpi = 300,
+  bg = "white" 
+)
+
+#### BOX PLOT Top y bottom 10 CINE específico:
+
+#Pegarle el avg_coef de cada CINE al dataframe data_icine_unico 
+data_boxplot <- data_icine_unico %>%
+  left_join(select(va_CINE, cine_f_2013_ac_campo_especific, avg_coef), by = "cine_f_2013_ac_campo_especific") %>%
+  mutate(color = ifelse(avg_coef > 0, "orange", "steelblue"))
+
+# Calcular el número de observaciones por cine especifico
+obs_count <- data_boxplot %>%
+  group_by(cine_f_2013_ac_campo_especific) %>%
+  summarise(n_obs = n(), .groups = "drop")
+
+# Unir el conteo al dataframe para graficar
+data_boxplot <- left_join(data_boxplot, obs_count, by = "cine_f_2013_ac_campo_especific")
+
+# Crear la gráfica de boxplots
+p_boxplot <- ggplot(data_boxplot, aes(x = reorder(cine_f_2013_ac_campo_especific, avg_coef), y = coeficiente, fill = color)) +
+  geom_boxplot() +
+  # Etiqueta del número de observaciones
+  geom_text(
+    data = distinct(data_boxplot, cine_f_2013_ac_campo_especific, n_obs),
+    aes(x = cine_f_2013_ac_campo_especific, y = max(data_boxplot$coeficiente, na.rm = TRUE) + 0.2, label = paste0("n = ", n_obs)),
+    inherit.aes = FALSE,
+    size = 3,
+    hjust = 0
+  ) +
+  coord_flip() +
+  scale_fill_identity() +
+  labs(
+    title = "Distribución del Valor Agregado por CINE específico",
+    x = "CINE",
+    y = "Valor Agregado"
+  ) +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 8))
+
+
+p_boxplot
+
+
+
+
+
+###############################
+# TOP Y BOTTOM 10 ICINE segun VA
+###############################
+
+#creamos el campo icine_amplio para mejorar la legibilidad
+data_icine_unico <- data_icine_unico %>%
+  mutate(icine_descrp = paste(inst_nombre_institucion, cine_f_2013_ac_campo_especific, sep = " \n"))
+
+#Pasar a minuscula el texto en icine_descrp
+data_icine_unico <- data_icine_unico %>%
+  mutate(icine_descrp = str_to_sentence(icine_descrp))
+
+#Seleccionamos los top y bottom icines segun va 
+top_bottom_descrp <- data_icine_unico %>%
+  arrange(desc(coeficiente)) %>%
+  slice_head(n = 10) %>%
+  bind_rows(
+    data_icine_unico %>%
+      arrange(coeficiente) %>%
+      slice_head(n = 10)
+  )
+
+
+p <- ggplot(top_bottom_descrp, aes(x = reorder(icine_descrp, coeficiente), y = coeficiente, fill = coeficiente > 0)) +
+  geom_col() +
+  coord_flip() +
+  scale_fill_manual(values = c("TRUE" = "steelblue", "FALSE" = "tomato")) +
+  labs(
+    title = "Top 10 y Bottom 10 ICINE según valor agregado",
+    x = "Descripción ICINE",
+    y = "Valor Agregado"
+  ) +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 7), legend.position = "none")  # Elimina la leyenda
+
+show(p)
+
+ggsave(
+  filename = "ICFES/output/top_bottom_icine.png",
+  plot = p,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+
+
+##################
+#Graficas con los 
+#valores agregados
+##################
+
+
+# Grafica con todos los valores agregados
 p <- plot_ly(
-  data = coefs_df,
-  x = ~`(Intercept)`,
-  y = ~reorder(icine, coeficiente),
+  data = data_icine_unico,
+  x = data_icine_unico$coeficiente,
+  y = ~reorder(icine_descrp, coeficiente),
   type = "bar",
   orientation = "h",
-  marker = list(color = ifelse(coefs_df$coeficiente >= 0, "tomato", "steelblue"))
+  marker = list(color = ifelse(data_icine_unico$coeficiente >= 0, "tomato", "steelblue"))
 ) %>%
   layout(
-    title = list(text = "Valor Agregado de los programas de pregrado en Bogotá", x = 0.5),
+    title = list(text = "Valor Agregado según ICINE - Bogotá", x = 0.5),
     xaxis = list(title = "Valor Agregado", zeroline = TRUE),
     yaxis = list(title = "", tickfont = list(size = 8)),
     margin = list(l = 150)
   )
 
 # Mostrar el gráfico
-p
+show(p)
 
 #Guardar la grafica como un html
 htmlwidgets::saveWidget(p, file = "ICFES/output/valor_agregado_general.html")
@@ -925,6 +1192,63 @@ ggsave(
   bg = "white" 
 )
 
+##################
+#Algunas Graficas
+#con las regresiones
+##################
+
+
+# Efectos fijo:
+fixef(fit.multinivel)
+
+# ICINE con el mayor y menor efecto aleatorio
+icine_max <- coefs_df$icine[which.max(coefs_df$coeficiente)]
+icine_min <- coefs_df$icine[which.min(coefs_df$coeficiente)]
+
+# Crear una grilla de valores para el eje x
+x_vals <- seq(min(data_filtrado$punt_global_bdsaber11, na.rm = TRUE),
+              max(data_filtrado$punt_global_bdsaber11, na.rm = TRUE),
+              length.out = 100)
+
+# Coeficientes
+intercepto_fijo <- fixef(fit.multinivel)[["(Intercept)"]]
+pendiente_fija <- fixef(fit.multinivel)[["punt_global_bdsaber11"]]
+
+# Interceptos ajustados por ICINE
+intercepto_max <- intercepto_fijo + coefs_df$coeficiente[coefs_df$icine == icine_max]
+intercepto_min <- intercepto_fijo + coefs_df$coeficiente[coefs_df$icine == icine_min]
+
+# Crear data para las 3 líneas
+lineas_df <- data.frame(
+  punt_global_bdsaber11 = rep(x_vals, 3),
+  punt_global_bdsaberpro = c(
+    intercepto_fijo + pendiente_fija * x_vals,
+    intercepto_max + pendiente_fija * x_vals,
+    intercepto_min + pendiente_fija * x_vals
+  ),
+  tipo = rep(c("Efecto fijo", "Mejor ICINE", "Peor ICINE"), each = length(x_vals))
+)
+
+p <- ggplot(data = lineas_df, aes(x = punt_global_bdsaber11, y = punt_global_bdsaberpro, color = tipo)) +
+  geom_line(linewidth = 0.5) +
+  labs(
+    title = "Comparación de regresiones multinivel por ICINE",
+    x = "Puntaje Saber 11",
+    y = "Puntaje Saber Pro (esperado)",
+    color = "Modelo"
+  ) +
+  theme_minimal()
+
+show(p)
+
+ggsave(
+  filename = "ICFES/output/regresiones_icine.png",  # Cambiá la ruta si querés guardarla en otro lado
+  plot = p,
+  width = 10,       # Ancho en pulgadas
+  height = 6,       # Alto en pulgadas
+  dpi = 300,        # Resolución
+  bg = "white"      # Fondo blanco
+)
 
 ######################
 #TO do: Revisar
