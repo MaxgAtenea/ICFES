@@ -488,9 +488,61 @@ data <- data %>%
 data <- data %>%
   mutate(icine = paste(codigo_institucion, cine_f_2013_ac_campo_especific, sep = "_"))
 
-############################################
+
+##################################
+#Analizar cuantos icines habrian dependiendo de la jerarquia cine escogida
+##################################
+
+data_temp <- data %>%
+  mutate(
+    icine_ampl = paste(codigo_institucion, cine_f_2013_ac_campo_amplio, sep = "_"),
+    icine_espe = paste(codigo_institucion, cine_f_2013_ac_campo_especific, sep = "_"),
+    icine_detall = paste(codigo_institucion, cine_f_2013_ac_campo_detallado, sep = "_")
+  )
+
+#Mirar la concentracion por grupos dependiendo de la jerarquia CINE i.e.,
+#CINE amplio, especifico o detallado.
+
+conteo_amplio <- data_temp %>%
+  group_by(icine_ampl) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  arrange(desc(n))
+
+conteo_especifico <- data_temp %>%
+  group_by(icine_espe) %>%
+  summarise(n = n()) %>%
+  arrange(desc(n))
+
+conteo_detallado <- data_temp %>%
+  group_by(icine_detall) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  arrange(desc(n))
+
+niveles <- bind_rows(
+  conteo_amplio %>% mutate(nivel = "Amplio"),
+  conteo_especifico %>% mutate(nivel = "Específico"),
+  conteo_detallado %>% mutate(nivel = "Detallado")
+)
+
+ggplot(niveles, aes(x = nivel, y = n, fill = nivel)) +
+  geom_boxplot(alpha = 0.6) +
+  labs(title = "Distribución de frecuencias por nivel CINE",
+       x = "Nivel CINE",
+       y = "Número de observaciones") +
+  theme_minimal() +
+  theme(legend.position = "none") -> p
+
+# Convertir a plotly
+p_interactivo <- ggplotly(p)
+
+# Mostrar el gráfico interactivo
+p_interactivo
+
+remove(conteo_amplio, conteo_especifico, conteo_detallado, data_temp, p_interactivo,p)
+
+##################################
 #Estadisticas descriptivas
-############################################
+##################################
 
 ##################################
 #Frecuencia SNIES
@@ -680,7 +732,10 @@ data_filtrado <- data %>%
   ) %>%
   group_by(estu_consecutivo_bdsaberpro) %>%
   slice_min(order_by = periodo_bdsaberpro, n = 1, with_ties = FALSE) %>% #filtro de no duplicados de saberpro
-  ungroup() %>% 
+  ungroup() 
+
+
+data_filtrado <- data_filtrado %>% 
   group_by(icine) %>%
   filter(n() >= 25) %>% #filtro de minimo 25 estudiantes por icine
   ungroup() %>% 
@@ -688,14 +743,6 @@ data_filtrado <- data %>%
   filter(n_distinct(codigo_institucion) >= 5) %>% #filtro de minimo 5 instituciones 
   ungroup()
 
-#numero observaciones por icine
-#317 icine distintos
-observaciones_icine <- data_filtrado %>%
-  group_by(icine) %>%
-  summarise(count = n()) %>%
-  arrange(desc(count))
-
-write.csv(observaciones_icine, "ICFES/output/n_observaciones_icine.csv", row.names = FALSE)
 
 #Resumen de los datos por tipo de dato y Nans
 data_filtrado_summary <- data_filtrado %>%
@@ -710,13 +757,20 @@ data_filtrado_summary <- data_filtrado %>%
     names_sep = "___"
   )
 
-
-####Guardar la tabla
-
+#Guardar la tabla data_filtrado_summary
 data_filtrado_summary %>%
   gt() %>%
   gtsave("ICFES/output/data_summary.png")
 
+#numero observaciones por icine
+#317 icine distintos
+observaciones_icine <- data_filtrado %>%
+  group_by(icine) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count))
+
+#guardar la tabla observaciones_icine
+write.csv(observaciones_icine, "ICFES/output/n_observaciones_icine.csv", row.names = FALSE)
 
 #Quedan 49 NBC unicos
 #Recordar que hay una categoria demas llamada "sin clasificar".
@@ -727,9 +781,24 @@ length(unique(data_filtrado$estu_nucleo_pregrado))
 #Existen 15 CINE especificos unicos para este ejercicio
 length(unique(data_filtrado$cine_f_2013_ac_campo_especific))
 
-
-#instituciones consideradas: 79
+#instituciones consideradas: 74
 n_distinct(data_filtrado$inst_nombre_institucion)
+
+
+############################################
+#Gráficas descriptivas
+############################################
+
+ggplot(observaciones_icine, aes(x = count)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "grey80", color = "white", alpha = 0.7) +
+  geom_density(fill = "skyblue", alpha = 0.4) +
+  labs(
+    title = "Tamaños de los grupos ICINE",
+    x = "Observaciones por ICINE",
+    y = ""
+  ) +
+  theme_minimal()
+
 
 ############################################
 #Data para el calcaculo del VA
@@ -741,36 +810,36 @@ remove(data,
        programas_freq,
        programas_matching,
        programas_non_matching,
-       top_10
+       top_10_programas
 )
 
 #Fijamos la BD con la que vamos a trabajar para no llamarla con cada variable
 attach(data_filtrado)
-icine <-factor(icine)  # La convertimos a factor
+# Convertimos a factor la variable icine
+data_filtrado$icine <- as.factor(data_filtrado$icine)
 
 
 ######
 #modelo con lme
 ######
 
-#estimamos la regresion multinivel con los codigos CINE
-multinivel_basico <- lme(
-  punt_global_bdsaberpro ~ punt_global_bdsaber11, random = ~ 1| icine, data = data_filtrado
-  )
-
-#extraemos el listado de efectos aleatorios (valor agregado)
-summary(multinivel_basico)
-coeff_va <- ranef(multinivel_basico)
-
-#visualizar el VA directamente
-multinivel_basico[["coefficients"]][["random"]] 
-
-# Convertimos a un data frame con las etiquetas como columna
-coefs_df <- data.frame(
-  variable = rownames(coeff_va),
-  coeficiente = coeff_va[[1]]
-)
-
+# #estimamos la regresion multinivel con los codigos CINE
+# multinivel_basico <- lme(
+#   punt_global_bdsaberpro ~ punt_global_bdsaber11, random = ~ 1| icine, data = data_filtrado
+#   )
+# 
+# #extraemos el listado de efectos aleatorios (valor agregado)
+# summary(multinivel_basico)
+# coeff_va <- ranef(multinivel_basico)
+# 
+# #visualizar el VA directamente
+# multinivel_basico[["coefficients"]][["random"]]
+# 
+# # Convertimos a un data frame con las etiquetas como columna
+# coefs_df <- data.frame(
+#   variable = rownames(coeff_va),
+#   coeficiente = coeff_va[[1]]
+# )
 
 ######
 #modelo con lmer
@@ -778,29 +847,26 @@ coefs_df <- data.frame(
 
 # Ajustar el modelo
 fit.multinivel <- lmer(punt_global_bdsaberpro ~ punt_global_bdsaber11 + (1 | icine), data = data_filtrado)
-
+#ver resultados
+summary(fit.multinivel)
 # Capturar el summary del modelo
 summary_output <- capture.output(summary(fit.multinivel))
-cat(paste(summary_output, collapse = "\n"))
-# Guardar como imagen
-png("ICFES/output/summary_model.png", width = 800, height = 600)  # Ajusta el tamaño según sea necesario
-grid.text(paste(summary_output, collapse = "\n"), x = 0, y = 1, just = "top", gp = gpar(fontsize = 10))
-dev.off()  # Cierra el dispositivo gráfico
+# Guardar como archivo de texto
+writeLines(summary_output, "ICFES/output/fit_multinivel_summary.txt")
 
-#random effects (valor agregado)
+#guardar los random effects (valor agregado)
 coeff_va <- ranef(fit.multinivel)
 
 # Convertir los efectos aleatorios en un data.frame
 coefs_df <- as.data.frame(coeff_va$icine)  # 'icine' es el nombre de tu variable agrupadora
 coefs_df$icine <- rownames(coefs_df)  # Agregar el nombre del grupo (icine) como una columna
+#renombrar la columna (Intercept)
+coefs_df <- coefs_df %>%
+  rename(coeficiente = `(Intercept)`)
 
 # Ordenar por el valor del efecto aleatorio del intercepto
 coefs_df <- coefs_df %>%
   arrange(`(Intercept)`)
-
-coefs_df <- coefs_df %>%
-  rename(coeficiente = `(Intercept)`)
-
 
 # Plot interactivo actualizado
 p <- plot_ly(
@@ -858,6 +924,8 @@ ggsave(
   dpi = 300,
   bg = "white" 
 )
+
+
 ######################
 #TO do: Revisar
 #Pruebas de normalidad
@@ -887,18 +955,6 @@ ggplot(data.frame(resid = residuals(fit.multinivel)), aes(x = resid)) +
                 color = "red", linetype = "dashed") +
   labs(title = "Density of Residuals vs Normal Curve")
 
-
-
-####
-#eliminando outliers
-####
-data_filtrado_sin_outliers <- data_filtrado %>%
-  filter(punt_global_bdsaberpro >= quantile(punt_global_bdsaberpro, 0.25) - 1.5 * IQR(punt_global_bdsaberpro) &
-           punt_global_bdsaberpro <= quantile(punt_global_bdsaberpro, 0.75) + 1.5 * IQR(punt_global_bdsaberpro))
-
-fit.multinivel <- lmer(punt_global_bdsaberpro ~ punt_global_bdsaber11 + (1 | icine), data = data_filtrado_sin_outliers)
-summary(fit.multinivel)
-shapiro.test(sample(residuals(fit.multinivel), 5000))
 
 
 ####################################################
