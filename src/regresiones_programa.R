@@ -58,13 +58,6 @@ library(lme4)#para la regresion de mixed models
 #library(gt) #para guardar tablas
 ##############################################
 
-
-
-
-
-
-
-
 ##########################################
 # CONSTANTES
 ##########################################
@@ -76,6 +69,7 @@ columnas_regresion <- c(
   "codigo_institucion",
   "inst_cod_institucion",
   "inst_nombre_institucion",
+  "nombre_institucion",
   "estu_nucleo_pregrado",
   "estu_snies_prgmacademico",
   "nucleo_basico_del_conocimiento",
@@ -94,9 +88,34 @@ columnas_regresion <- c(
   "periodo_bdsaber11",
   "periodo_bdsaberpro",
   "dif_periodos",
+  "nombre_del_programa",
   "estado_programa",
   "nivel_de_formacion",
   "nivel_academico"
+)
+
+columnas_exportar = c(
+  "icine",
+  "codigo_institucion",
+  "nombre_institucion",
+  "estu_snies_prgmacademico",
+  "nombre_del_programa",
+  "nucleo_basico_del_conocimiento",
+  "id_cine_campo_amplio",
+  "cine_f_2013_ac_campo_amplio",
+  "id_cine_campo_especifico",
+  "cine_f_2013_ac_campo_especific",
+  "id_cine_campo_detallado",
+  "cine_f_2013_ac_campo_detallado",
+  "estado_programa",
+  "nivel_de_formacion",
+  "nivel_academico",
+  "n_estudiantes_programa",
+  "n_estudiantes_institucion",
+  "n_estudiantes_cinespecifico",
+  "coeficiente_PG",
+  "coeficiente_LC",
+  "coeficiente_RC"
 )
 
 ##########################################
@@ -116,8 +135,6 @@ resumen_nans <- function(df) {
       names_sep = "___"
     )
 }
-
-
 
 ##########################################
 # DESARROLLO
@@ -166,12 +183,10 @@ data_filtrado <- data %>%
   group_by(estu_consecutivo_bdsaberpro) %>%
   slice_min(order_by = periodo_bdsaberpro, n = 1, with_ties = FALSE) %>% #quedarse con el primer saber pro
   ungroup() %>%
-  group_by(icine) %>%
-  filter(n() >= 25) %>% #minimo 25 estudiantes por icine
-  ungroup() %>%
-  group_by(cine_f_2013_ac_campo_especific) %>%
-  filter(n_distinct(codigo_institucion) >= 5) %>%  #el icine debe estar en minimo 5 instituciones 
+  group_by(estu_snies_prgmacademico) %>%
+  filter(n() >= 25) %>% #minimo 25 estudiantes por programa
   ungroup()
+  
 
 #Resumen de los datos por tipo de dato y Nans
 data_filtrado_summary <- resumen_nans(data_filtrado)
@@ -209,46 +224,137 @@ n_distinct(data_filtrado$codigo_institucion)
 #Fijamos la BD con la que vamos a trabajar para faciliar la llamada de cada variable
 attach(data_filtrado)
 # Convertimos a factor la variable icine
-data_filtrado$icine <- as.factor(data_filtrado$icine)
+data_filtrado$estu_snies_prgmacademico <- as.factor(data_filtrado$estu_snies_prgmacademico)
 
 #LA REGRESION LA EJECUTAMOS CON LMER
 
+
+##########################################
+#4.1 REGRESION 
+#Puntaje global Saber Pro
+#Puntaje global conciliado Saber 11
+##########################################
+
 # Ajustar el modelo
-fit.multinivel <- lmer(
-  punt_global_bdsaberpro ~ punt_global_bdsaber11_conciliado + (1 | icine),
+fit.multinivel_PG <- lmer(
+  punt_global_bdsaberpro ~ punt_global_bdsaber11_conciliado + (1 | estu_snies_prgmacademico),
   data = data_filtrado
 )
 
 #ver resultados
-summary(fit.multinivel)
+summary(fit.multinivel_PG)
 # Capturar el summary del modelo
-summary_output <- capture.output(summary(fit.multinivel))
+summary_output_PG <- capture.output(summary(fit.multinivel_PG))
 # Guardar como archivo de texto
-writeLines(summary_output, "output/fit_multinivel_summary.txt")
+#writeLines(summary_output_PG, "output/fit_multinivel_puntajeglobal_summary.txt")
 
 #guardar los random effects i.e., el Valor Agregado
-coeff_va <- ranef(fit.multinivel)
+coeff_va_pg <- ranef(fit.multinivel_PG)
 
 # Convertir los efectos aleatorios en un data.frame
-coefs_df <- as.data.frame(coeff_va$icine)  # 'icine' es el nombre de la variable agrupadora
-coefs_df$icine <- rownames(coefs_df)  # Agregar el nombre del grupo (icine) como una columna
+coefs_pg_df <- as.data.frame(coeff_va_pg$estu_snies_prgmacademico)  # 'estu_snies_prgmacademico' es el nombre de la variable agrupadora
+coefs_pg_df$estu_snies_prgmacademico <- rownames(coefs_pg_df)  # Agregar el nombre del grupo (estu_snies_prgmacademico) como una columna
 
 #Renombrar la columna (Intercept)
 #Ordenar por el valor del efecto aleatorio
-coefs_df <- coefs_df %>%
-  rename(coeficiente = `(Intercept)`) %>%
-  arrange(desc(coeficiente))
+coefs_pg_df <- coefs_pg_df %>%
+  rename(coeficiente_PG = `(Intercept)`) %>%
+  arrange(desc(coeficiente_PG))
+
 
 ##########################################
-#4. ANALISIS VA
+#4.2 REGRESION 
+#Puntaje Razonamiento cuant. Saber Pro
+#Puntaje global Saber 11
+##########################################
+
+# Ajustar el modelo
+fit.multinivel_RC <- lmer(
+  mod_razona_cuantitat_punt ~ punt_global_bdsaber11_conciliado + (1 | estu_snies_prgmacademico),
+  data = data_filtrado
+)
+
+#ver resultados
+summary(fit.multinivel_RC)
+# Capturar el summary del modelo
+summary_output_RC <- capture.output(summary(fit.multinivel_RC))
+# Guardar como archivo de texto
+#writeLines(summary_output_RC, "output/fit_multinivel_razcuant_summary.txt")
+
+#guardar los random effects i.e., el Valor Agregado
+coeff_va_rc <- ranef(fit.multinivel_RC)
+
+# Convertir los efectos aleatorios en un data.frame
+coefs_rc_df <- as.data.frame(coeff_va_rc$estu_snies_prgmacademico)  # 'estu_snies_prgmacademico' es el nombre de la variable agrupadora
+coefs_rc_df$estu_snies_prgmacademico <- rownames(coefs_rc_df)  # Agregar el nombre del grupo (estu_snies_prgmacademico) como una columna
+
+#Renombrar la columna (Intercept)
+#Ordenar por el valor del efecto aleatorio
+coefs_rc_df <- coefs_rc_df %>%
+  rename(coeficiente_RC = `(Intercept)`) %>%
+  arrange(desc(coeficiente_RC))
+
+
+##########################################
+#4.3 REGRESION 
+#Puntaje Lectura critica . Saber Pro
+#Puntaje global Saber 11
+##########################################
+
+# Ajustar el modelo
+fit.multinivel_LC <- lmer(
+  mod_lectura_critica_punt ~ punt_global_bdsaber11_conciliado + (1 | estu_snies_prgmacademico),
+  data = data_filtrado
+)
+
+#ver resultados
+summary(fit.multinivel_LC)
+# Capturar el summary del modelo
+summary_output_LC <- capture.output(summary(fit.multinivel_LC))
+# Guardar como archivo de texto
+#writeLines(summary_output_LC, "output/fit_multinivel_lectcrit_summary.txt")
+
+#guardar los random effects i.e., el Valor Agregado
+coeff_va_lc <- ranef(fit.multinivel_LC)
+
+# Convertir los efectos aleatorios en un data.frame
+coefs_lc_df <- as.data.frame(coeff_va_lc$estu_snies_prgmacademico)  # 'estu_snies_prgmacademico' es el nombre de la variable agrupadora
+coefs_lc_df$estu_snies_prgmacademico <- rownames(coefs_lc_df)  # Agregar el nombre del grupo (estu_snies_prgmacademico) como una columna
+
+#Renombrar la columna (Intercept)
+#Ordenar por el valor del efecto aleatorio
+coefs_lc_df <- coefs_lc_df %>%
+  rename(coeficiente_LC = `(Intercept)`) %>%
+  arrange(desc(coeficiente_LC))
+
+##########################################
+#4. Unir en un unico df cada conjunto de 
+#coeficientes
+##########################################
+
+resumen_coefs <- coefs_pg_df %>%
+  inner_join(coefs_rc_df, by = "estu_snies_prgmacademico") %>%
+  inner_join(coefs_lc_df, by = "estu_snies_prgmacademico")
+
+##########################################
+#5. Exportacion del df
 ##########################################
 
 #adicionamos al dataframe data_filtrado los resultados de la regresion
-data_filtrado <- inner_join(data_filtrado,coefs_df, by = c("icine"))
+data_filtrado <- inner_join(data_filtrado,resumen_coefs, by = c("estu_snies_prgmacademico"))
+
+data_filtrado <- data_filtrado %>% 
+  add_count(estu_snies_prgmacademico, name = "n_estudiantes_programa") %>% 
+  add_count(codigo_institucion, name = "n_estudiantes_institucion") %>% 
+  add_count(cine_f_2013_ac_campo_especific, name = "n_estudiantes_cinespecifico")
 
 #Crear un nuevo dataframe con observaciones unicas de icine
-data_icine_unico <- data_filtrado %>%
-  distinct(icine, .keep_all = TRUE) %>% arrange(desc(coeficiente))
+data_programa_unico <- data_filtrado %>%
+  distinct(estu_snies_prgmacademico, .keep_all = TRUE) %>% arrange(desc(coeficiente_PG))
+
+#Seleccionar las columnas de interes
+data_programa_unico <- data_programa_unico %>%
+  select(all_of(columnas_exportar))
 
 #guardamos el dataframe
-write_csv(data_icine_unico, "data/BD/va.csv")
+write_csv(data_programa_unico, "data/Resultados/va_programa.csv")

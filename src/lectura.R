@@ -297,7 +297,18 @@ icfes$estu_nucleo_pregrado <- icfes$estu_nucleo_pregrado %>%
   str_trim() %>%                              # Eliminar espacios al principio y al final
   str_to_title()                              # Capitalizar la primera letra de cada palabra
 
-#Nota: El ICFES recalculo los puntajes del saber 11 para las bases 2012-1 a 2014-1 para que fueran
+#Limpiar la columna inst_nombre_institucion porque hay filas con este formato:
+#"FUNDACION UNIVERSIDAD DE BOGOTA\"\"JORGE TADEO LOZANO\"\"-BOGOTÁ D.C." 
+icfes$inst_nombre_institucion <- icfes$inst_nombre_institucion %>%
+  str_replace_all('\"', "") %>%              # Eliminar comillas dobles
+  str_replace_all("\\\\", "") %>%            # Eliminar backslashes
+  str_squish() %>%                           # Eliminar espacios extra
+  stri_trans_general("latin-ascii") %>%      # Eliminar tildes
+  str_to_title() 
+
+
+
+#Nota: El ICFES recalculó los puntajes del saber 11 para las bases 2012-1 a 2014-1 para que fueran
 #comparables con las series del 2014-2 en adelante
 
 #calcular el puntaje global (recalificado) para las observaciones con los puntajes recalificados
@@ -312,7 +323,6 @@ icfes$punt_global_bdsaber11_conciliado <- ifelse(
   icfes$punt_global_bdsaber11
 )
 
-icfes$recaf_punt_matematicas
 
 #Asignamos a cada observacion el correspondiente puntaje de mate del saber 11 
 icfes$punt_mate_conciliado <- ifelse(
@@ -399,7 +409,22 @@ base_cine$municipio_oferta_programa  <- base_cine$municipio_oferta_programa  %>%
   str_replace_all(" ", "_") %>%               # Reemplazar espacios por "_"
   str_remove_all("[\\.,]")                    # Eliminar puntos y comas
 
-#estu_nucleo_pregrado representa el NBC
+#Limpiar la columna nombre_insititucion:
+base_cine$nombre_institucion <- base_cine$nombre_institucion %>%
+  str_replace_all('\"', "") %>%              # Eliminar comillas dobles
+  str_replace_all("\\\\", "") %>%            # Eliminar backslashes
+  str_squish() %>%                           # Eliminar espacios extra
+  stri_trans_general("latin-ascii") %>%      # Eliminar tildes
+  str_to_title()
+
+#Limpiar la columna nombre_programa:
+base_cine$nombre_del_programa <- base_cine$nombre_del_programa %>%
+  str_replace_all('\"', "") %>%              # Eliminar comillas dobles
+  str_replace_all("\\\\", "") %>%            # Eliminar backslashes
+  str_squish() %>%                           # Eliminar espacios extra
+  stri_trans_general("latin-ascii") %>%      # Eliminar tildes
+  str_to_title() 
+
 write_csv(base_cine, "data/SNIES_CINE_cleaned/base_cine.csv")
 
 #Filtrar por los programas que:
@@ -423,7 +448,7 @@ base_cine_filtrada <- base_cine %>%
 
 data <- left_join(
   icfes,
-  base_cine,
+  base_cine_filtrada,
   by = join_by(estu_snies_prgmacademico==codigo_snies_del_programa)
 )
 
