@@ -62,7 +62,7 @@ library(ggrepel)
 
 #Lectura de los valores agregados por icine
 #Cada observación es un ICINE 
-data_icine_unico <- read_delim("data/Resultados/va_icine.csv", escape_double = FALSE, trim_ws = TRUE)
+data_icine_unico <- read_delim("data/Resultados/va_icine_bogota_region.csv", escape_double = FALSE, trim_ws = TRUE)
 
 
 ##########################################
@@ -114,7 +114,7 @@ show(p)
 
 #guardar el ggplot
 ggsave(
-  filename = "output/CINE_especifico/scatter_va_median_rc_vs_lc_cine_especifico.png",
+  filename = "output/BogotaRegion/CINE/scatter_va_median_rc_vs_lc_cine_especifico.png",
   plot = p,   # o puedes nombrar tu plot si lo guardaste como objeto
   width = 10,
   height = 10,
@@ -196,11 +196,11 @@ p_boxplot_gg
 
 #3. Guardar el boxplot
 #guardar el plotly
-htmlwidgets::saveWidget(p_boxplot_plotly, file = "output/CINE_especifico/boxplots_va_pg_cine_especifico.html")
+htmlwidgets::saveWidget(p_boxplot_plotly, file = "output/BogotaRegion/CINE/boxplots_va_pg_cine_especifico.html")
 
 #guardar el ggplot
 ggsave(
-  filename = "output/CINE_especifico/boxplots_va_pg_cine_especifico.png",
+  filename = "output/BogotaRegion/CINE/boxplots_va_pg_cine_especifico.png",
   plot = p_boxplot_gg,   # o puedes nombrar tu plot si lo guardaste como objeto
   width = 20,
   height = 6,
@@ -274,11 +274,11 @@ p_boxplot_gg
 
 #3. Guardar el boxplot
 #guardar el plotly
-htmlwidgets::saveWidget(p_boxplot_plotly, file = "output/CINE_especifico/boxplots_va_lc_cine_especifico.html")
+htmlwidgets::saveWidget(p_boxplot_plotly, file = "output/BogotaRegion/CINE/boxplots_va_lc_cine_especifico.html")
 
 #guardar el ggplot
 ggsave(
-  filename = "output/CINE_especifico/boxplots_va_lc_cine_especifico.png",
+  filename = "output/BogotaRegion/CINE/boxplots_va_lc_cine_especifico.png",
   plot = p_boxplot_gg,   # o puedes nombrar tu plot si lo guardaste como objeto
   width = 20,
   height = 6,
@@ -355,11 +355,11 @@ p_boxplot_gg
 
 #3. Guardar el boxplot
 #guardar el plotly
-htmlwidgets::saveWidget(p_boxplot_plotly, file = "output/CINE_especifico/boxplots_va_rc_cine_especifico.html")
+htmlwidgets::saveWidget(p_boxplot_plotly, file = "output/BogotaRegion/CINE/boxplots_va_rc_cine_especifico.html")
 
 #guardar el ggplot
 ggsave(
-  filename = "output/CINE_especifico/boxplots_va_rc_cine_especifico.png",
+  filename = "output/BogotaRegion/CINE/boxplots_va_rc_cine_especifico.png",
   plot = p_boxplot_gg,   # o puedes nombrar tu plot si lo guardaste como objeto
   width = 20,
   height = 6,

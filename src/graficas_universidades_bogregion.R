@@ -61,7 +61,7 @@ library(ggrepel)
 
 #Lectura de los valores agregados por icine
 #Cada observación es un ICINE 
-data_icine_unico <- read_delim("data/Resultados/va_icine.csv", escape_double = FALSE, trim_ws = TRUE)
+data_icine_unico <- read_delim("data/Resultados/va_icine_bogota_region.csv", escape_double = FALSE, trim_ws = TRUE)
 
 ##########################################
 #0 SCATTER PLOT LC VS RC
@@ -96,7 +96,6 @@ extremos <- va_universidades %>%
   slice_max(order_by = distancia_origen, n = 3) %>%
   ungroup()
 
-# Añadir una columna para los puntos extremos
 extremos <- extremos %>%
   mutate(color = "Puntos Extremos")
 
@@ -108,6 +107,9 @@ va_universidades <- va_universidades %>%
   mutate(destacar = avg_va_lc > 0.1 | avg_va_lc < -0.1 | avg_va_rc > 0.1 | avg_va_rc < -0.1)
 
 
+# Añadir una columna para los puntos extremos
+extremos <- extremos %>%
+  mutate(color = "Puntos Extremos")
 
 # Graficar
 p <- ggplot(va_universidades, aes(x = avg_va_lc, y = avg_va_rc)) +
@@ -149,7 +151,7 @@ show(p)
 
 #guardar el ggplot
 ggsave(
-  filename = "output/Universidades/scatter_va_median_rc_vs_lc_universidades_extremas.png",
+  filename = "output/BogotaRegion/Universidades/scatter_va_median_rc_vs_lc_universidades_extremas.png",
   plot = p,   # o puedes nombrar tu plot si lo guardaste como objeto
   width = 10,
   height = 10,
@@ -183,7 +185,7 @@ show(p)
 
 #guardar el ggplot
 ggsave(
-  filename = "output/Universidades/scatter_va_median_rc_vs_lc_universidades.png",
+  filename = "output/BogotaRegion/Universidades/scatter_va_median_rc_vs_lc_universidades.png",
   plot = p,   # o puedes nombrar tu plot si lo guardaste como objeto
   width = 20,
   height = 20,
@@ -260,7 +262,7 @@ p_boxplot
 
 # Guardar la gráfica
 ggsave(
-  filename = "output/Universidades/boxplot_va_pg_top_bottom_ies.png",
+  filename = "output/BogotaRegion/Universidades/boxplot_va_pg_top_bottom_ies.png",
   plot = p_boxplot,   # o puedes nombrar tu plot si lo guardaste como objeto
   width = 20,
   height = 6,
@@ -332,7 +334,7 @@ p_boxplot
 
 # Guardar la gráfica
 ggsave(
-  filename = "output/Universidades/boxplot_va_lc_top_bottom_ies.png",
+  filename = "output/BogotaRegion/Universidades/boxplot_va_lc_top_bottom_ies.png",
   plot = p_boxplot,   # o puedes nombrar tu plot si lo guardaste como objeto
   width = 20,
   height = 6,
@@ -404,7 +406,7 @@ p_boxplot
 
 # Guardar la gráfica
 ggsave(
-  filename = "output/Universidades/boxplot_va_rc_top_bottom_ies.png",
+  filename = "output/BogotaRegion/Universidades/boxplot_va_rc_top_bottom_ies.png",
   plot = p_boxplot,   # o puedes nombrar tu plot si lo guardaste como objeto
   width = 20,
   height = 6,
@@ -462,7 +464,7 @@ p_boxplot <- plot_ly(
 p_boxplot
 
 #3. Guardar el boxplot
-htmlwidgets::saveWidget(p_boxplot, file = "output/Universidades/boxplots_va_pg_universidades.html")
+htmlwidgets::saveWidget(p_boxplot, file = "output/BogotaRegion/Universidades/boxplots_va_pg_universidades.html")
 
 
 ##########################################
@@ -508,7 +510,7 @@ p_boxplot <- plot_ly(
 p_boxplot
 
 #3. Guardar el boxplot
-htmlwidgets::saveWidget(p_boxplot, file = "output/Universidades/boxplots_va_lc_universidades.html")
+htmlwidgets::saveWidget(p_boxplot, file = "output/BogotaRegion/Universidades/boxplots_va_lc_universidades.html")
 
 
 
@@ -555,5 +557,5 @@ p_boxplot <- plot_ly(
 p_boxplot
 
 #3. Guardar el boxplot
-htmlwidgets::saveWidget(p_boxplot, file = "output/Universidades/boxplots_va_rc_universidades.html")
+htmlwidgets::saveWidget(p_boxplot, file = "output/BogotaRegion/Universidades/boxplots_va_rc_universidades.html")
 

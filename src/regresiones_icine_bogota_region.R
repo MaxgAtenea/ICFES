@@ -91,7 +91,9 @@ columnas_regresion <- c(
   "nombre_del_programa",
   "estado_programa",
   "nivel_de_formacion",
-  "nivel_academico"
+  "nivel_academico",
+  "municipio_oferta_programa",
+  "codigo_del_municipio_programa"
 )
 
 columnas_exportar = c(
@@ -101,6 +103,8 @@ columnas_exportar = c(
   "nombre_institucion",
   "estu_snies_prgmacademico",
   "nombre_del_programa",
+  "municipio_oferta_programa",
+  "codigo_del_municipio_programa",
   "nucleo_basico_del_conocimiento",
   "id_cine_campo_amplio",
   "cine_f_2013_ac_campo_amplio",
@@ -158,8 +162,21 @@ data <- read_delim("data/BD/icfes_cine.csv", escape_double = FALSE, trim_ws = TR
 data <- data %>%
   select(all_of(columnas_regresion))
 
+#FILTRAR POR:
+#programa activo
+#programa universitario
+#programa pregrado
+data <- data %>%
+   filter(
+     estado_programa == "Activo",
+     nivel_de_formacion=="Universitario",
+     nivel_academico=="Pregrado",
+ )
+
+
 #Resumen de los datos por tipo de dato y Nans
 data_summary_raw <- resumen_nans(data)
+
 
 ##########################################
 #2. APLICAR FILTROS ICFES
@@ -220,6 +237,8 @@ length(unique(data_filtrado$cine_f_2013_ac_campo_especific))
 n_distinct(data_filtrado$inst_nombre_institucion)
 n_distinct(data_filtrado$codigo_institucion)
 
+#numero programas:
+n_distinct(data_filtrado$estu_snies_prgmacademico)
 
 ##########################################
 #4. REGRESION
@@ -250,7 +269,7 @@ summary(fit.multinivel_PG)
 # Capturar el summary del modelo
 summary_output_PG <- capture.output(summary(fit.multinivel_PG))
 # Guardar como archivo de texto
-writeLines(summary_output_PG, "output/fit_multinivel_puntajeglobal_summary.txt")
+writeLines(summary_output_PG, "output/fit_multinivel_puntajeglobal_bogotaregion_summary.txt")
 
 #guardar los random effects i.e., el Valor Agregado
 coeff_va_pg <- ranef(fit.multinivel_PG)
@@ -283,7 +302,7 @@ summary(fit.multinivel_RC)
 # Capturar el summary del modelo
 summary_output_RC <- capture.output(summary(fit.multinivel_RC))
 # Guardar como archivo de texto
-writeLines(summary_output_RC, "output/fit_multinivel_razcuant_summary.txt")
+writeLines(summary_output_RC, "output/fit_multinivel_razcuant_bogotaregion_summary.txt")
 
 #guardar los random effects i.e., el Valor Agregado
 coeff_va_rc <- ranef(fit.multinivel_RC)
@@ -316,7 +335,7 @@ summary(fit.multinivel_LC)
 # Capturar el summary del modelo
 summary_output_LC <- capture.output(summary(fit.multinivel_LC))
 # Guardar como archivo de texto
-writeLines(summary_output_LC, "output/fit_multinivel_lectcrit_summary.txt")
+writeLines(summary_output_LC, "output/fit_multinivel_lectcrit__bogotaregion_summary.txt")
 
 #guardar los random effects i.e., el Valor Agregado
 coeff_va_lc <- ranef(fit.multinivel_LC)
@@ -368,4 +387,4 @@ data_icine_unico <- data_icine_unico %>%
   select(all_of(columnas_exportar))
 
 #guardamos el dataframe
-write_csv(data_icine_unico, "data/Resultados/va_icine.csv")
+write_csv(data_icine_unico, "data/Resultados/va_icine_bogota_region.csv")

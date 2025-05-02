@@ -49,6 +49,7 @@ library(stringi) #facilitar la manipulacion de caracteres
 library(stringr)#facilitar la manipulacion de caracteres
 library(plotly) #para graficas dinamicas
 library(lme4)#para la regresion de mixed models
+library(fuzzyjoin)
 ##############################################
 #Correr este bloque antes de cargar library(gt)
 #install.packages("gt")
@@ -169,6 +170,7 @@ variables_nombre_cine <- c(
 #https://www.ccb.org.co/es/informacion-especializada/observatorio/entorno-para-los-negocios/desarrollo-urbano-y-regional/en-bogota-region-viven-mas-de-10-millones-de-habitantes
 bogota_region <- c(
   "arbelaez",
+  "bogota_dc",
   "cabrera",
   "cajica",
   "carmen_de_carupa",
@@ -228,7 +230,6 @@ bogota_region <- c(
   "zipaquira"
 )
 
-
 #CINE campos amplios son 11 los reportados por el DANE
 #CINE campos detallados son 121 (82+10 interdisciplinarios + 10 no clasificados en otra parte)
 #CINES especificos segun documento DANE
@@ -280,15 +281,19 @@ calcular_puntaje_global_sb11 <- function(df) {
 #LECTURA DE DATOS
 ##################################
 
+#0. Municipios bogota region
+municipios <- read_delim("data/Municipios_cleaned/municipios.csv", escape_double = FALSE, trim_ws = TRUE)
+
 #1. ICFES
 #Saber pro y saber 11
 
 #Leer la base consolidada del Saber Pro cruzado con Saber 11
 #A nivel de Bogota
-icfes <- read_delim("data/BD/icfes_bd.csv", escape_double = FALSE, trim_ws = TRUE)
+#icfes <- read_delim("data/BD/icfes_bd.csv", escape_double = FALSE, trim_ws = TRUE)
+icfes <- read_delim("data/BD/icfes_bogota_region.csv", escape_double = FALSE, trim_ws = TRUE)
 
 #Limpiar la columna estu_nucleo_pregrado y actualizarla en el dataframe
-#toda vez que sutilesas en la redaccion generan campos duplicados
+#sutilezas en la redaccion generan campos duplicados
 #estu_nucleo_pregrado representa el NBC
 icfes$estu_nucleo_pregrado <- icfes$estu_nucleo_pregrado %>%
   str_to_lower() %>%                          # Convertir a minúsculas
@@ -297,7 +302,7 @@ icfes$estu_nucleo_pregrado <- icfes$estu_nucleo_pregrado %>%
   str_trim() %>%                              # Eliminar espacios al principio y al final
   str_to_title()                              # Capitalizar la primera letra de cada palabra
 
-#Limpiar la columna inst_nombre_institucion porque hay filas con este formato:
+#Limpiar el formato de la columna inst_nombre_institucion porque hay filas con este formato:
 #"FUNDACION UNIVERSIDAD DE BOGOTA\"\"JORGE TADEO LOZANO\"\"-BOGOTÁ D.C." 
 icfes$inst_nombre_institucion <- icfes$inst_nombre_institucion %>%
   str_replace_all('\"', "") %>%              # Eliminar comillas dobles
@@ -306,7 +311,18 @@ icfes$inst_nombre_institucion <- icfes$inst_nombre_institucion %>%
   stri_trans_general("latin-ascii") %>%      # Eliminar tildes
   str_to_title() 
 
+#Limpiar el formato de la columna estu_prgm_municipio:
+icfes$estu_prgm_municipio <- icfes$estu_prgm_municipio %>%
+  str_replace_all('\"', "") %>%              # Eliminar comillas dobles
+  str_replace_all("\\.", "") %>%             # Eliminar puntos
+  str_replace_all(",", "") %>%               # Eliminar comas (opcional)
+  str_replace_all("\\\\", "") %>%            # Eliminar backslashes
+  str_squish() %>%                           # Eliminar espacios extra
+  stri_trans_general("latin-ascii") %>%      # Eliminar tildes
+  str_to_lower() %>% 
+  str_replace_all(" ", "_")                  # Reemplazar espacios por guión bajo
 
+unique(icfes$estu_prgm_municipio)
 
 #Nota: El ICFES recalculó los puntajes del saber 11 para las bases 2012-1 a 2014-1 para que fueran
 #comparables con las series del 2014-2 en adelante
@@ -427,20 +443,36 @@ base_cine$nombre_del_programa <- base_cine$nombre_del_programa %>%
 
 write_csv(base_cine, "data/SNIES_CINE_cleaned/base_cine.csv")
 
+
 #Filtrar por los programas que:
-#1. Esten en Bogota
-#2. Esten activos
-#3. Programas universitarios
-#4. Programas de pregrado
-base_cine_filtrada <- base_cine %>%
-  filter(
-    municipio_oferta_programa == "bogota_dc",
-    (codigo_del_municipio_programa == 11001 | is.na(codigo_del_municipio_programa)),
-    estado_programa == "Activo",
-    nivel_de_formacion=="Universitario",
-    nivel_academico=="Pregrado"
+#0. Esten en bogotá region
+#1. Esten activos
+#2. Programas universitarios
+#3. Programas de pregrado
+
+
+# Convierte bogota_region en data frame para hacer el join
+bogota_region_df <- data.frame(
+  municipio = bogota_region,
+  stringsAsFactors = FALSE
 )
 
+#hacer filtro de bogota region con un fuzzy join
+base_cine_filtrada <- stringdist_inner_join(
+  base_cine,
+  bogota_region_df,
+  by = c("municipio_oferta_programa" = "municipio"),
+  method = "jw",         # Jaro-Winkler
+  max_dist = 0.05        # Ajusta este umbral según tus datos
+) %>%
+  filter(
+    estado_programa == "Activo",
+    nivel_de_formacion == "Universitario",
+    nivel_academico == "Pregrado"
+  )
+
+#municipios en la base_cine_filtrada
+sort(unique(base_cine_filtrada$municipio_oferta_programa))
 
 #3. Cruzar informacion del icfes con la informacion del CINE
 #Hacer left join con la base icfes y base_cine
