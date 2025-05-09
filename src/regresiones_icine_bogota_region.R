@@ -49,6 +49,9 @@ library(stringi) #facilitar la manipulacion de caracteres
 library(stringr)#facilitar la manipulacion de caracteres
 library(plotly) #para graficas dinamicas
 library(lme4)#para la regresion de mixed models
+library(data.tree) #visualizar grupos anidados en forma de arbol
+library(jsonlite) #guardar en formato json
+library(purrr)
 ##############################################
 #Correr este bloque antes de cargar library(gt)
 #install.packages("gt")
@@ -93,7 +96,8 @@ columnas_regresion <- c(
   "nivel_de_formacion",
   "nivel_academico",
   "municipio_oferta_programa",
-  "codigo_del_municipio_programa"
+  "codigo_del_municipio_programa",
+  "ies_acreditada"
 )
 
 columnas_exportar = c(
@@ -205,7 +209,7 @@ data_filtrado <- data %>%
   filter(n() >= 25) %>% #minimo 25 estudiantes por icine
   ungroup() %>%
   group_by(cine_f_2013_ac_campo_especific) %>%
-  filter(n_distinct(codigo_institucion) >= 5) %>%  #el icine debe estar en minimo 5 instituciones 
+  filter(n_distinct(codigo_institucion) >= 5) %>%  #el cine debe estar en minimo 5 instituciones 
   ungroup()
   
 
@@ -215,7 +219,6 @@ data_filtrado_summary <- resumen_nans(data_filtrado)
 ##########################################
 #3. OBSERVACIONES
 ##########################################
-
 
 #numero observaciones por icine
 #346 icine distintos
@@ -233,27 +236,120 @@ length(unique(data_filtrado$estu_nucleo_pregrado))
 #Existen 16 CINE especificos unicos para este ejercicio
 length(unique(data_filtrado$cine_f_2013_ac_campo_especific))
 
-#instituciones consideradas: 80
+#instituciones consideradas: 79
 n_distinct(data_filtrado$inst_nombre_institucion)
 n_distinct(data_filtrado$codigo_institucion)
 
-#numero programas:
+#numero programas: 909
 n_distinct(data_filtrado$estu_snies_prgmacademico)
 
+
 ##########################################
-#4. REGRESION
+#3. OBSERVACIONES POR ANIDACION
+##########################################
+
+#Numero de instituciones y personas por CINE especifico
+data_filtrado %>%
+  group_by(cine_f_2013_ac_campo_especific) %>%
+  summarise(
+    total_personas = n(),
+    icine_distintos = n_distinct(icine)
+  ) %>%
+  arrange(desc(icine_distintos))
+
+##Ver los icines por cada CINE y el numero de observaciones
+### preparar los datos
+tabla <- data_filtrado %>%
+  group_by(cine_f_2013_ac_campo_especific, icine) %>%
+  summarise(n_estudiantes = n(), .groups = "drop")
+### Crea columna con la ruta tipo "CINE/ICINE"
+tabla$pathString <- paste("Total", tabla$cine_f_2013_ac_campo_especific, tabla$icine, sep = "/")
+### Convierte a árbol
+arbol <- as.Node(tabla)
+### Exporta a JSON
+json_output <- ToListExplicit(arbol, unname = TRUE)
+### Guarda como archivo JSON
+write_json(json_output, path = "output/estructura_cine.json", pretty = TRUE)
+
+##########################################
+#4. CORRELACION
+##########################################
+
+# Selecciona solo las variables numéricas que deseas analizar
+variables_correlacion <- data_filtrado %>%
+  select(punt_global_bdsaber11_conciliado,
+         punt_mate_conciliado,
+         punt_lectura_critica_conciliado,
+         mod_razona_cuantitat_punt, 
+         mod_lectura_critica_punt,
+         punt_global_bdsaberpro
+)
+
+# Calcular la matriz de correlación
+correlation_matrix <- cor(variables_correlacion, use = "complete.obs")  # usa "complete.obs" para ignorar NA
+
+# Ver la matriz de correlación
+library(knitr)
+kable(correlation_matrix, caption = "Correlation Matrix")
+
+##########################################
+#5. REGRESION
 ##########################################
 
 #Fijamos la BD con la que vamos a trabajar para faciliar la llamada de cada variable
 attach(data_filtrado)
 # Convertimos a factor la variable icine
 data_filtrado$icine <- as.factor(data_filtrado$icine)
+data_filtrado$cine_f_2013_ac_campo_especific <- as.factor(data_filtrado$cine_f_2013_ac_campo_especific)
 
 #LA REGRESION LA EJECUTAMOS CON LMER
 
+##########################################
+#5.1.1 REGRESION para cada CINE especifico
+#Puntaje global Saber Pro
+#Puntaje global conciliado Saber 11
+##########################################
+
+# Lista de modelos por grupo CINE
+modelos_por_cine <- data_filtrado %>%
+  split(.$cine_f_2013_ac_campo_especific) %>%
+  map(~ lmer(punt_global_bdsaberpro ~ punt_global_bdsaber11_conciliado + (1 | icine), data = .x))
+
+
+# Resumen de cada modelo
+resumenes <- map(modelos_por_cine, summary)
+
+# Efectos aleatorios (valor agregado) de cada modelo
+valores_agregados <- map2(
+  modelos_por_cine,
+  names(modelos_por_cine),
+  ~ ranef(.x)$icine %>%
+    as.data.frame() %>%
+    mutate(icine = rownames(ranef(.x)$icine),
+           cine = .y) %>%
+    rename(coeficiente_PG = `(Intercept)`)
+)
+
+# Unir todos los valores agregados en un solo data.frame ordenado
+coefs_pg_df <- bind_rows(valores_agregados) %>%
+  arrange(desc(coeficiente_PG))
+
+# Seleccionar icine, nombre_institucion y codigo_institucion únicos desde el dataset original
+info_instituciones <- data_filtrado %>%
+  select(icine, nombre_institucion, codigo_institucion) %>%
+  distinct()
+
+coefs_pg_df <- coefs_pg_df %>%
+  left_join(info_instituciones, by = c("icine" = "icine"))
+
+coefs_pg_df <- coefs_pg_df %>%
+  left_join(
+    tabla %>% select(icine, n_estudiantes),
+    by = "icine"
+  )
 
 ##########################################
-#4.1 REGRESION 
+#5.1.2 REGRESION con todos los datos
 #Puntaje global Saber Pro
 #Puntaje global conciliado Saber 11
 ##########################################
@@ -269,7 +365,7 @@ summary(fit.multinivel_PG)
 # Capturar el summary del modelo
 summary_output_PG <- capture.output(summary(fit.multinivel_PG))
 # Guardar como archivo de texto
-writeLines(summary_output_PG, "output/fit_multinivel_puntajeglobal_bogotaregion_summary.txt")
+#writeLines(summary_output_PG, "output/fit_multinivel_puntajeglobal_bogotaregion_summary.txt")
 
 #guardar los random effects i.e., el Valor Agregado
 coeff_va_pg <- ranef(fit.multinivel_PG)
@@ -284,9 +380,51 @@ coefs_pg_df <- coefs_pg_df %>%
   rename(coeficiente_PG = `(Intercept)`) %>%
   arrange(desc(coeficiente_PG))
 
+##########################################
+#5.2.1 REGRESION para cada CINE especifico
+#Puntaje Razonamiento cuant. Saber Pro
+#Puntaje global Saber 11
+##########################################
+
+# Lista de modelos por grupo CINE
+modelos_por_cine <- data_filtrado %>%
+  split(.$cine_f_2013_ac_campo_especific) %>%
+  map(~ lmer(mod_razona_cuantitat_punt ~ punt_global_bdsaber11_conciliado + (1 | icine), data = .x))
+
+# Resumen de cada modelo
+resumenes <- map(modelos_por_cine, summary)
+
+# Efectos aleatorios (valor agregado) de cada modelo
+valores_agregados <- map2(
+  modelos_por_cine,
+  names(modelos_por_cine),
+  ~ ranef(.x)$icine %>%
+    as.data.frame() %>%
+    mutate(icine = rownames(ranef(.x)$icine),
+           cine = .y) %>%
+    rename(coeficiente_LC = `(Intercept)`)
+)
+
+# Unir todos los valores agregados en un solo data.frame ordenado
+coefs_lc_df <- bind_rows(valores_agregados) %>%
+  arrange(desc(coeficiente_LC))
+
+# Seleccionar icine, nombre_institucion y codigo_institucion únicos desde el dataset original
+info_instituciones <- data_filtrado %>%
+  select(icine, nombre_institucion, codigo_institucion) %>%
+  distinct()
+
+coefs_lc_df <- coefs_lc_df %>%
+  left_join(info_instituciones, by = c("icine" = "icine"))
+
+coefs_lc_df <- coefs_lc_df %>%
+  left_join(
+    tabla %>% select(icine, n_estudiantes),
+    by = "icine"
+  )
 
 ##########################################
-#4.2 REGRESION 
+#5.2.2 REGRESION con todos los datos
 #Puntaje Razonamiento cuant. Saber Pro
 #Puntaje global Saber 11
 ##########################################
@@ -319,7 +457,50 @@ coefs_rc_df <- coefs_rc_df %>%
 
 
 ##########################################
-#4.3 REGRESION 
+#5.3.1 REGRESION para cada CINE especifico
+#Puntaje Lectura Critica Saber Pro
+#Puntaje global Saber 11
+##########################################
+
+# Lista de modelos por grupo CINE
+modelos_por_cine <- data_filtrado %>%
+  split(.$cine_f_2013_ac_campo_especific) %>%
+  map(~ lmer(mod_lectura_critica_punt ~ punt_global_bdsaber11_conciliado + (1 | icine), data = .x))
+
+# Resumen de cada modelo
+resumenes <- map(modelos_por_cine, summary)
+
+# Efectos aleatorios (valor agregado) de cada modelo
+valores_agregados <- map2(
+  modelos_por_cine,
+  names(modelos_por_cine),
+  ~ ranef(.x)$icine %>%
+    as.data.frame() %>%
+    mutate(icine = rownames(ranef(.x)$icine),
+           cine = .y) %>%
+    rename(coeficiente_LC = `(Intercept)`)
+)
+
+# Unir todos los valores agregados en un solo data.frame ordenado
+coefs_rc_df <- bind_rows(valores_agregados) %>%
+  arrange(desc(coeficiente_LC))
+
+# Seleccionar icine, nombre_institucion y codigo_institucion únicos desde el dataset original
+info_instituciones <- data_filtrado %>%
+  select(icine, nombre_institucion, codigo_institucion) %>%
+  distinct()
+
+coefs_rc_df <- coefs_rc_df %>%
+  left_join(info_instituciones, by = c("icine" = "icine"))
+
+coefs_rc_df <- coefs_rc_df %>%
+  left_join(
+    tabla %>% select(icine, n_estudiantes),
+    by = "icine"
+  )
+
+##########################################
+#5.3 REGRESION 
 #Puntaje Lectura critica . Saber Pro
 #Puntaje global Saber 11
 ##########################################
@@ -351,7 +532,7 @@ coefs_lc_df <- coefs_lc_df %>%
   arrange(desc(coeficiente_LC))
 
 ##########################################
-#4. Unir en un unico df cada conjunto de 
+#6. Unir en un unico df cada conjunto de 
 #coeficientes
 ##########################################
 
@@ -360,7 +541,7 @@ resumen_coefs <- coefs_pg_df %>%
   inner_join(coefs_lc_df, by = "icine")
 
 ##########################################
-#5. Exportacion del df
+#7. Exportacion del df
 ##########################################
 
 #adicionamos al dataframe data_filtrado los resultados de la regresion

@@ -61,6 +61,12 @@ library(fuzzyjoin)
 
 
 ##################################
+#Set working directory
+##################################
+setwd("/home/alejandro/Documentos/ATENEA/Despacho/ICFES")
+
+
+##################################
 #Constantes
 ##################################
 
@@ -163,7 +169,8 @@ variables_nombre_cine <- c(
   "periodicidad",
   "departamento_oferta_programa",
   "municipio_oferta_programa",
-  "costo_matricula_estud_nuevos"
+  "costo_matricula_estud_nuevos",
+  "reconocimiento_del_ministerio"
 )
 
 #municipios que conforman bogota region según la camara de comercio
@@ -252,6 +259,21 @@ rellenar_na <- function(df, max_filas) {
   return(df)
 }
 
+# Rsumir nans por cada variables
+resumen_nans <- function(df) {
+  df %>%
+    summarise(across(everything(), list(
+      class = ~ class(.)[1],
+      NA_count = ~ sum(is.na(.)),
+      NaN_count = ~ sum(is.nan(.))
+    ), .names = "{.col}___{.fn}")) %>%
+    pivot_longer(
+      cols = everything(),
+      names_to = c("column", ".value"),
+      names_sep = "___"
+    )
+}
+
 # Funcion para recalificar el puntaje global del saber 11
 #Las series 2012-1 a 2014-1 nececesitan recalificacion del puntaje global
 recalificar_puntaje_global_sb11 <- function(df) {
@@ -322,6 +344,7 @@ icfes$estu_prgm_municipio <- icfes$estu_prgm_municipio %>%
   str_to_lower() %>% 
   str_replace_all(" ", "_")                  # Reemplazar espacios por guión bajo
 
+#Municipios donde se tiene informacion del icfes
 unique(icfes$estu_prgm_municipio)
 
 #Nota: El ICFES recalculó los puntajes del saber 11 para las bases 2012-1 a 2014-1 para que fueran
@@ -477,7 +500,6 @@ sort(unique(base_cine_filtrada$municipio_oferta_programa))
 #3. Cruzar informacion del icfes con la informacion del CINE
 #Hacer left join con la base icfes y base_cine
 #Nota: 31 codigos snies en la bd icfes no encontraron match en la bd del snies
-
 data <- left_join(
   icfes,
   base_cine_filtrada,
@@ -504,17 +526,7 @@ data <- data %>%
 #6. Resumen de Nans
 
 #Resumen de los datos por tipo de dato y Nans
-data_summary <- data %>%
-  summarise(across(everything(), list(
-    class = ~ class(.)[1],
-    NA_count = ~ sum(is.na(.)),
-    NaN_count = ~ sum(is.nan(.))
-  ), .names = "{.col}___{.fn}")) %>%
-  pivot_longer(
-    cols = everything(),
-    names_to = c("column", ".value"),
-    names_sep = "___"
-  )
+data_summary <- resumen_nans(data)
 
 #Guardar DataFrame
 #Especificacion del dataframe:
