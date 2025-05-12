@@ -86,6 +86,9 @@ columnas_regresion <- c(
   "punt_mate_conciliado",
   "mod_lectura_critica_punt",
   "punt_lectura_critica_conciliado",
+  "punt_c_naturales_conciliado",
+  "punt_sociales_conciliado",
+  "punt_ingles_conciliado",
   "punt_global_bdsaberpro",
   "punt_global_bdsaber11_conciliado",
   "periodo_bdsaber11",
@@ -259,13 +262,13 @@ data_filtrado %>%
 
 ##Ver los icines por cada CINE y el numero de observaciones
 ### preparar los datos
-tabla <- data_filtrado %>%
+tabla_cine <- data_filtrado %>%
   group_by(cine_f_2013_ac_campo_especific, icine) %>%
   summarise(n_estudiantes = n(), .groups = "drop")
 ### Crea columna con la ruta tipo "CINE/ICINE"
-tabla$pathString <- paste("Total", tabla$cine_f_2013_ac_campo_especific, tabla$icine, sep = "/")
+tabla_cine$pathString <- paste("Total", tabla_cine$cine_f_2013_ac_campo_especific, tabla_cine$icine, sep = "/")
 ### Convierte a árbol
-arbol <- as.Node(tabla)
+arbol <- as.Node(tabla_cine)
 ### Exporta a JSON
 json_output <- ToListExplicit(arbol, unname = TRUE)
 ### Guarda como archivo JSON
@@ -275,11 +278,14 @@ write_json(json_output, path = "output/estructura_cine.json", pretty = TRUE)
 #4. CORRELACION
 ##########################################
 
-# Selecciona solo las variables numéricas que deseas analizar
+# Seleccionar las variables a analizar
 variables_correlacion <- data_filtrado %>%
   select(punt_global_bdsaber11_conciliado,
          punt_mate_conciliado,
          punt_lectura_critica_conciliado,
+         punt_c_naturales_conciliado,
+         punt_sociales_conciliado,
+         punt_ingles_conciliado,
          mod_razona_cuantitat_punt, 
          mod_lectura_critica_punt,
          punt_global_bdsaberpro
@@ -313,8 +319,16 @@ data_filtrado$cine_f_2013_ac_campo_especific <- as.factor(data_filtrado$cine_f_2
 # Lista de modelos por grupo CINE
 modelos_por_cine <- data_filtrado %>%
   split(.$cine_f_2013_ac_campo_especific) %>%
-  map(~ lmer(punt_global_bdsaberpro ~ punt_global_bdsaber11_conciliado + (1 | icine), data = .x))
-
+  map(~ lmer(
+    punt_global_bdsaberpro ~ 
+      punt_mate_conciliado +
+      punt_lectura_critica_conciliado +
+      punt_c_naturales_conciliado +
+      punt_sociales_conciliado + 
+      punt_ingles_conciliado +
+      (1 | icine)
+    , data = .x)
+    )
 
 # Resumen de cada modelo
 resumenes <- map(modelos_por_cine, summary)
@@ -344,7 +358,7 @@ coefs_pg_df <- coefs_pg_df %>%
 
 coefs_pg_df <- coefs_pg_df %>%
   left_join(
-    tabla %>% select(icine, n_estudiantes),
+    tabla_cine %>% select(icine, n_estudiantes),
     by = "icine"
   )
 
@@ -386,10 +400,20 @@ coefs_pg_df <- coefs_pg_df %>%
 #Puntaje global Saber 11
 ##########################################
 
+
 # Lista de modelos por grupo CINE
 modelos_por_cine <- data_filtrado %>%
   split(.$cine_f_2013_ac_campo_especific) %>%
-  map(~ lmer(mod_razona_cuantitat_punt ~ punt_global_bdsaber11_conciliado + (1 | icine), data = .x))
+  map(~ lmer(
+    mod_razona_cuantitat_punt ~ 
+      punt_mate_conciliado +
+      punt_lectura_critica_conciliado +
+      punt_c_naturales_conciliado +
+      punt_sociales_conciliado + 
+      punt_ingles_conciliado +
+      (1 | icine)
+    , data = .x)
+  )
 
 # Resumen de cada modelo
 resumenes <- map(modelos_por_cine, summary)
@@ -402,24 +426,24 @@ valores_agregados <- map2(
     as.data.frame() %>%
     mutate(icine = rownames(ranef(.x)$icine),
            cine = .y) %>%
-    rename(coeficiente_LC = `(Intercept)`)
+    rename(coeficiente_RC = `(Intercept)`)
 )
 
 # Unir todos los valores agregados en un solo data.frame ordenado
-coefs_lc_df <- bind_rows(valores_agregados) %>%
-  arrange(desc(coeficiente_LC))
+coefs_rc_df <- bind_rows(valores_agregados) %>%
+  arrange(desc(coeficiente_RC))
 
 # Seleccionar icine, nombre_institucion y codigo_institucion únicos desde el dataset original
 info_instituciones <- data_filtrado %>%
   select(icine, nombre_institucion, codigo_institucion) %>%
   distinct()
 
-coefs_lc_df <- coefs_lc_df %>%
+coefs_rc_df <- coefs_rc_df %>%
   left_join(info_instituciones, by = c("icine" = "icine"))
 
-coefs_lc_df <- coefs_lc_df %>%
+coefs_rc_df <- coefs_rc_df %>%
   left_join(
-    tabla %>% select(icine, n_estudiantes),
+    tabla_cine %>% select(icine, n_estudiantes),
     by = "icine"
   )
 
@@ -462,10 +486,32 @@ coefs_rc_df <- coefs_rc_df %>%
 #Puntaje global Saber 11
 ##########################################
 
+# Eliminar outliers por cada categoría de 'icine'
+data_filtrado_sin_outliers <- data_filtrado %>%
+  group_by(icine) %>%
+  mutate(
+    # Usar boxplot.stats dentro de cada grupo
+    stats = list(boxplot.stats(mod_lectura_critica_punt)$stats),
+    lower_limit = stats[[1]][1],  # Límite inferior (Q1 - 1.5*IQR)
+    upper_limit = stats[[1]][5]   # Límite superior (Q3 + 1.5*IQR)
+  ) %>%
+  filter(mod_lectura_critica_punt >= lower_limit & mod_lectura_critica_punt <= upper_limit) %>%
+  select(-stats, -lower_limit, -upper_limit) %>%
+  ungroup()
+
 # Lista de modelos por grupo CINE
-modelos_por_cine <- data_filtrado %>%
+modelos_por_cine <- data_filtrado_sin_outliers %>%
   split(.$cine_f_2013_ac_campo_especific) %>%
-  map(~ lmer(mod_lectura_critica_punt ~ punt_global_bdsaber11_conciliado + (1 | icine), data = .x))
+  map(~ lmer(
+    mod_lectura_critica_punt ~ 
+      punt_mate_conciliado +
+      punt_lectura_critica_conciliado +
+      punt_c_naturales_conciliado +
+      punt_sociales_conciliado + 
+      punt_ingles_conciliado +
+      (1 | icine)
+    , data = .x)
+  )
 
 # Resumen de cada modelo
 resumenes <- map(modelos_por_cine, summary)
@@ -482,7 +528,7 @@ valores_agregados <- map2(
 )
 
 # Unir todos los valores agregados en un solo data.frame ordenado
-coefs_rc_df <- bind_rows(valores_agregados) %>%
+coefs_lc_df <- bind_rows(valores_agregados) %>%
   arrange(desc(coeficiente_LC))
 
 # Seleccionar icine, nombre_institucion y codigo_institucion únicos desde el dataset original
@@ -490,17 +536,17 @@ info_instituciones <- data_filtrado %>%
   select(icine, nombre_institucion, codigo_institucion) %>%
   distinct()
 
-coefs_rc_df <- coefs_rc_df %>%
+coefs_lc_df <- coefs_lc_df %>%
   left_join(info_instituciones, by = c("icine" = "icine"))
 
-coefs_rc_df <- coefs_rc_df %>%
+coefs_lc_df <- coefs_lc_df %>%
   left_join(
-    tabla %>% select(icine, n_estudiantes),
+    tabla_cine %>% select(icine, n_estudiantes),
     by = "icine"
   )
 
 ##########################################
-#5.3 REGRESION 
+#5.3.2 REGRESION con todos los datos
 #Puntaje Lectura critica . Saber Pro
 #Puntaje global Saber 11
 ##########################################
@@ -569,3 +615,137 @@ data_icine_unico <- data_icine_unico %>%
 
 #guardamos el dataframe
 write_csv(data_icine_unico, "data/Resultados/va_icine_bogota_region.csv")
+
+
+################################
+# Filter the data for the desired CINE field
+################################
+library(patchwork)
+
+data_mate_estad <- data_filtrado %>%
+  filter(cine_f_2013_ac_campo_especific == "Matemáticas y estadística")
+
+# Define a base ggplot theme for professionalism
+theme_prof <- theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+    axis.text.y = element_text(size = 10),
+    plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
+    legend.position = "none"
+  )
+
+# Boxplot para Razonamiento Cuantitativo, CINE matematicas y estadistica
+p1 <- ggplot(data_mate_estad, aes(x = nombre_institucion, y = mod_razona_cuantitat_punt, fill = nombre_institucion)) +
+  geom_boxplot() +
+  scale_fill_viridis_d(option = "D") +
+  labs(
+    title = "Puntaje Razonamiento Cuantitativo (Saber Pro) por Institución",
+    subtitle = "Campo CINE: Matemáticas y Estadística",
+    x = "Institución",
+    y = "Puntaje Razonamiento Cuantitativo"
+  ) +
+  theme_prof
+
+# Filter the data
+coefs_mate <- coefs_rc_df %>%
+  filter(cine == "Matemáticas y estadística")
+
+
+# Scatter plot para VA razonamiento cuantitiva, CINE matematicas y estadistica with point size representing number of students
+p2 <- ggplot(coefs_mate, aes(x = nombre_institucion, y = coeficiente_RC, size = n_estudiantes, color = nombre_institucion)) +
+  geom_point(alpha = 0.8) +
+  scale_size_continuous(range = c(2, 10)) +
+  scale_color_viridis_d(option = "D", guide = "none") +
+  labs(
+    title = "Valor Agregado de Razonamiento Cuantitativo por Institución",
+    subtitle = "Campo CINE: Matemáticas y Estadística",
+    x = "Nombre Institución",
+    y = "Coeficiente RC",
+    size = "N° Estudiantes"
+  ) +
+  theme_prof
+
+combined_plot <- p1 + p2
+
+ggsave("output/va_y_puntajeRC_mate.png", plot = combined_plot, width = 18, height = 6, dpi = 300, limitsize = FALSE)
+
+# Convert each plot
+p1_html <- ggplotly(p1)
+p2_html <- ggplotly(p2)
+
+library(htmlwidgets)
+# Combine in an HTML layout (e.g., side-by-side in tags)
+subplot(p1_html, p2_html, nrows = 1, margin = 0.05) %>%
+  saveWidget("output/va_y_puntajeRC_mate.html", selfcontained = TRUE)
+
+
+
+
+library(viridis)
+library(patchwork)
+
+plot_va_and_score <- function(data_scores, data_va, cine_value) {
+  
+  # Filter input data for the selected CINE field
+  data_cine_stad <- data_scores %>%
+    filter(cine_f_2013_ac_campo_especific == cine_value)
+  
+  va_cine <- data_va %>%
+    filter(cine == cine_value)
+  
+  # Define reusable theme
+  theme_prof <- theme_minimal(base_size = 12) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+      axis.text.y = element_text(size = 10),
+      plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
+      legend.position = "none"
+    )
+  
+  # Boxplot: Puntaje de lectura critica por institucion
+  p1 <- ggplot(data_cine_stad, aes(x = nombre_institucion, y = mod_lectura_critica_punt, fill = nombre_institucion)) +
+    geom_boxplot() +
+    scale_fill_viridis_d(option = "D") +
+    labs(
+      title = "Puntaje Lecutura Critica (Saber Pro) por Institución",
+      subtitle = paste("Campo CINE:", cine_value),
+      x = "Institución",
+      y = "Puntaje Razonamiento Cuantitativo"
+    ) +
+    theme_prof
+  
+  # Scatterplot: Valor Agregado (coeficiente_LC) por institución
+  p2 <- ggplot(va_cine, aes(x = nombre_institucion, y = coeficiente_LC, size = n_estudiantes, color = nombre_institucion)) +
+    geom_point(alpha = 0.8) +
+    scale_size_continuous(range = c(2, 10)) +
+    scale_color_viridis_d(option = "D", guide = "none") +
+    labs(
+      title = "Valor Agregado de Lectura Critica por Institución",
+      subtitle = paste("Campo CINE:", cine_value),
+      x = "Nombre Institución",
+      y = "Valor agregado Lectura critica",
+      size = "N° Estudiantes"
+    ) +
+    theme_prof
+  
+  # Convert to interactive plotly
+  # Convert to interactive plotly
+  p1_html <- ggplotly(p1) %>%
+    layout(
+      title = "Puntaje Lectura Crítica por Institución",  # Main title
+      yaxis = list(title = "Puntaje Lectura Crítica")   # Y-axis title
+    )
+  
+  p2_html <- ggplotly(p2) %>%
+    layout(
+      title = "Valor Agregado de Lectura Crítica por Institución",  # Main title
+      yaxis = list(title = "Valor agregado Lectura Crítica")   # Y-axis title
+    )
+  
+  # Combine and save
+  combined_html <- subplot(p1_html, p2_html, nrows = 1, margin = 0.05)
+  saveWidget(combined_html, "output/va_y_puntajeLC_dere.html", selfcontained = TRUE)
+  
+}
+
+combined_plot <- plot_va_and_score(data_scores = data_filtrado_sin_outliers, data_va = coefs_lc_df, cine_value = "Derecho")

@@ -370,13 +370,33 @@ icfes$punt_mate_conciliado <- ifelse(
   icfes$punt_matematicas
 )
 
-#Asignamos a cada observacion el correspondiente puntaje de mate del saber 11 
+#Asignamos a cada observacion el correspondiente puntaje de lectura critica del saber 11 
 icfes$punt_lectura_critica_conciliado <- ifelse(
   is.na(icfes$punt_lectura_critica),
   icfes$recaf_punt_lectura_critica,
   icfes$punt_lectura_critica
 )
 
+#Asignamos a cada observacion el correspondiente puntaje de ciencias nat. del saber 11 
+icfes$punt_c_naturales_conciliado <- ifelse(
+  is.na(icfes$punt_c_naturales),
+  icfes$recaf_punt_c_naturales,
+  icfes$punt_c_naturales
+)
+
+#Asignamos a cada observacion el correspondiente puntaje de ingles del saber 11 
+icfes$punt_ingles_conciliado <- ifelse(
+  is.na(icfes$punt_ingles),
+  icfes$recaf_punt_ingles,
+  icfes$punt_ingles
+)
+
+#Asignamos a cada observacion el correspondiente puntaje de sociales del saber 11 
+icfes$punt_sociales_conciliado <- ifelse(
+  is.na(icfes$punt_sociales_ciudadanas),
+  icfes$recaf_punt_sociales_ciudadanas,
+  icfes$punt_sociales_ciudadanas
+)
 
 # Resumen de ambos puntajes globales
 summary(icfes[
@@ -535,3 +555,4 @@ data_summary <- resumen_nans(data)
 #3.Variable ICINE (analogo al INBC)
 
 write_csv(data, "data/BD/icfes_cine.csv")
+
