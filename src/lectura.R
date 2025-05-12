@@ -533,7 +533,6 @@ data <- left_join(
 data <- data %>%
   filter(inst_cod_institucion == codigo_institucion)
 
-
 #5.Definicion de la variable ICINE
 
 #Crear la variable ICINE que pretende ser el analogo al INBC
@@ -541,7 +540,6 @@ data <- data %>%
   mutate(icine = paste(codigo_institucion, cine_f_2013_ac_campo_especific, sep = "_"),
          icine_detall = paste(codigo_institucion, cine_f_2013_ac_campo_detallado, sep = "_")
   )
-
 
 #6. Resumen de Nans
 
