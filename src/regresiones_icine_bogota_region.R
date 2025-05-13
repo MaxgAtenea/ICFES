@@ -182,6 +182,35 @@ calcular_ICC <- function(modelos, var_dependiente) {
   return(icc_df)
 }
 
+#' Calcular varianzas condicionales de los efectos aleatorios
+#'
+#' Esta función extrae la varianza condicional de los interceptos aleatorios (efectos aleatorios) 
+#' para cada grupo `icine` en una lista de modelos lineales mixtos ajustados con `lmer()`. 
+#' Devuelve un dataframe con una fila por grupo dentro de cada modelo, incluyendo el nombre del grupo y del modelo (cine).
+calcular_sd_condicional <- function(modelos, var_dependiente) {
+  # Calcular las desviaciones estándar condicionales para cada modelo
+  desvios <- map2(modelos, names(modelos), function(modelo, cine_nombre) {
+    re <- ranef(modelo, condVar = TRUE)
+    post_var <- attr(re$icine, "postVar")
+    sd_cond <- sqrt(as.numeric(post_var[1, 1, ]))
+    
+    data.frame(
+      icine = rownames(re$icine),
+      cine = cine_nombre,
+      valor = sd_cond
+    )
+  })
+  
+  # Unir en un solo dataframe
+  desvios_df <- bind_rows(desvios)
+  
+  # Renombrar la columna dinámicamente
+  col_name <- paste0("sd_cond_", var_dependiente)
+  names(desvios_df)[names(desvios_df) == "valor"] <- col_name
+  
+  return(desvios_df)
+}
+
 
 
 ##########################################
@@ -443,18 +472,15 @@ coefs_pg_df <- coefs_pg_df %>%
 
 coefs_pg_df <- coefs_pg_df %>%
   left_join(
-    tabla_cine %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa),
+    tabla_cine %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa, promedio_punt_saberpro),
     by = "icine"
   )
 
-# obtener el dataframe con los ICCs
-icc_pg_df <- calcular_ICC(modelos_por_cine,"pg")
+desviaciones_condicionales_df <- calcular_sd_condicional(modelos_por_cine, "pg")
 
 coefs_pg_df <- coefs_pg_df %>%
-  left_join(
-    icc_pg_df,
-    by = "cine"
-  )
+  left_join(desviaciones_condicionales_df, by = c("icine", "cine"))
+
 
 
 ##########################################
@@ -505,17 +531,14 @@ coefs_rc_df <- coefs_rc_df %>%
 
 coefs_rc_df <- coefs_rc_df %>%
   left_join(
-    tabla_cine %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa),
+    tabla_cine %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa, promedio_punt_saberpro),
     by = "icine"
   )
 
-icc_rc_df <- calcular_ICC(modelos_por_cine,"rc")
+desviaciones_condicionales_df <- calcular_sd_condicional(modelos_por_cine, "rc")
 
 coefs_rc_df <- coefs_rc_df %>%
-  left_join(
-    icc_rc_df,
-    by = "cine"
-  )
+  left_join(desviaciones_condicionales_df, by = c("icine", "cine"))
 
 ##########################################
 #5.1.3 REGRESION para cada CINE especifico
@@ -565,17 +588,14 @@ coefs_lc_df <- coefs_lc_df %>%
 
 coefs_lc_df <- coefs_lc_df %>%
   left_join(
-    tabla_cine %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa),
+    tabla_cine %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa, promedio_punt_saberpro),
     by = "icine"
   )
 
-icc_lc_df <- calcular_ICC(modelos_por_cine,"lc")
+desviaciones_condicionales_df <- calcular_sd_condicional(modelos_por_cine, "lc")
 
 coefs_lc_df <- coefs_lc_df %>%
-  left_join(
-    icc_lc_df,
-    by = "cine"
-  )
+  left_join(desviaciones_condicionales_df, by = c("icine", "cine"))
 
 ###############################################################################
 ##########################################
@@ -641,17 +661,14 @@ coefs_pg_df_2023 <- coefs_pg_df_2023 %>%
 
 coefs_pg_df_2023 <- coefs_pg_df_2023 %>%
   left_join(
-    tabla_cine_2023 %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa),
+    tabla_cine_2023 %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa, promedio_punt_saberpro),
     by = "icine"
   )
 
-icc_pg_df_2023 <- calcular_ICC(modelos_por_cine,"pg")
+desviaciones_condicionales_df <- calcular_sd_condicional(modelos_por_cine, "pg")
 
 coefs_pg_df_2023 <- coefs_pg_df_2023 %>%
-  left_join(
-    icc_pg_df_2023,
-    by = "cine"
-  )
+  left_join(desviaciones_condicionales_df, by = c("icine", "cine"))
 
 ##########################################
 #5.2.2 REGRESION para cada CINE especifico
@@ -702,17 +719,14 @@ coefs_rc_df_2023 <- coefs_rc_df_2023 %>%
 
 coefs_rc_df_2023 <- coefs_rc_df_2023 %>%
   left_join(
-    tabla_cine_2023 %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa),
+    tabla_cine_2023 %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa, promedio_punt_saberpro),
     by = "icine"
   )
 
-icc_rc_df_2023 <- calcular_ICC(modelos_por_cine,"rc")
+desviaciones_condicionales_df <- calcular_sd_condicional(modelos_por_cine, "rc")
 
 coefs_rc_df_2023 <- coefs_rc_df_2023 %>%
-  left_join(
-    icc_rc_df_2023,
-    by = "cine"
-  )
+  left_join(desviaciones_condicionales_df, by = c("icine", "cine"))
 
 ##########################################
 #5.2.3 REGRESION para cada CINE especifico
@@ -763,17 +777,15 @@ coefs_lc_df_2023 <- coefs_lc_df_2023 %>%
 
 coefs_lc_df_2023 <- coefs_lc_df_2023 %>%
   left_join(
-    tabla_cine_2023 %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa),
+    tabla_cine_2023 %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa, promedio_punt_saberpro),
     by = "icine"
   )
 
-icc_lc_df_2023 <- calcular_ICC(modelos_por_cine,"lc")
+desviaciones_condicionales_df <- calcular_sd_condicional(modelos_por_cine, "lc")
 
 coefs_lc_df_2023 <- coefs_lc_df_2023 %>%
-  left_join(
-    icc_lc_df_2023,
-    by = "cine"
-  )
+  left_join(desviaciones_condicionales_df, by = c("icine", "cine"))
+
 
 ##########################################
 #6. Unir los coeficientes de va en un
@@ -782,14 +794,14 @@ coefs_lc_df_2023 <- coefs_lc_df_2023 %>%
 
 #Valores agregados con base en todos los periodos del Saber PRO
 resumen_coefs <- coefs_pg_df %>%
-  inner_join(coefs_rc_df %>% select(icine, coeficiente_RC, icc_rc), by = "icine") %>%
-  inner_join(coefs_lc_df %>% select(icine, coeficiente_LC, icc_lc), by = "icine") %>% 
+  inner_join(coefs_rc_df %>% select(icine, coeficiente_RC, sd_cond_rc), by = "icine") %>%
+  inner_join(coefs_lc_df %>% select(icine, coeficiente_LC, sd_cond_lc), by = "icine") %>% 
   relocate(coeficiente_PG, coeficiente_LC, coeficiente_RC, .after = last_col())
 
 #Valores agregados con base en 2023 del Saber PRO
 resumen_coefs_2023 <- coefs_pg_df_2023 %>%
-  inner_join(coefs_rc_df_2023 %>% select(icine, coeficiente_RC, icc_rc), by = "icine") %>%
-  inner_join(coefs_lc_df_2023 %>% select(icine, coeficiente_LC, icc_lc), by = "icine") %>%
+  inner_join(coefs_rc_df_2023 %>% select(icine, coeficiente_RC, sd_cond_rc), by = "icine") %>%
+  inner_join(coefs_lc_df_2023 %>% select(icine, coeficiente_LC, sd_cond_lc), by = "icine") %>%
   relocate(coeficiente_PG, coeficiente_LC, coeficiente_RC, .after = last_col())
 
 
@@ -808,141 +820,8 @@ write_csv(resumen_coefs_2023, "data/Resultados/va_icine_bogota_region_2023.csv")
 write_csv(data_filtrado, "data/BD/data_estimacion_todos_periodos.csv")
 write_csv(data_filtrado_2023, "data/BD/data_estimacion_2023.csv")
 
-##########################################
-#. Resumen Boxplot 
-##########################################
-
-resumen_boxplot_por_grupo(data_filtrado,"mod_lectura_critica_punt")
-
-################################
-# Filter the data for the desired CINE field
-################################
-library(patchwork)
-
-data_mate_estad <- data_filtrado %>%
-  filter(cine_f_2013_ac_campo_especific == "Matemáticas y estadística")
-
-# Define a base ggplot theme for professionalism
-theme_prof <- theme_minimal(base_size = 12) +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
-    axis.text.y = element_text(size = 10),
-    plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
-    legend.position = "none"
-  )
-
-# Boxplot para Razonamiento Cuantitativo, CINE matematicas y estadistica
-p1 <- ggplot(data_mate_estad, aes(x = nombre_institucion, y = mod_razona_cuantitat_punt, fill = nombre_institucion)) +
-  geom_boxplot() +
-  scale_fill_viridis_d(option = "D") +
-  labs(
-    title = "Puntaje Razonamiento Cuantitativo (Saber Pro) por Institución",
-    subtitle = "Campo CINE: Matemáticas y Estadística",
-    x = "Institución",
-    y = "Puntaje Razonamiento Cuantitativo"
-  ) +
-  theme_prof
-
-# Filter the data
-coefs_mate <- coefs_rc_df %>%
-  filter(cine == "Matemáticas y estadística")
-
-
-# Scatter plot para VA razonamiento cuantitiva, CINE matematicas y estadistica with point size representing number of students
-p2 <- ggplot(coefs_mate, aes(x = nombre_institucion, y = coeficiente_RC, size = n_estudiantes, color = nombre_institucion)) +
-  geom_point(alpha = 0.8) +
-  scale_size_continuous(range = c(2, 10)) +
-  scale_color_viridis_d(option = "D", guide = "none") +
-  labs(
-    title = "Valor Agregado de Razonamiento Cuantitativo por Institución",
-    subtitle = "Campo CINE: Matemáticas y Estadística",
-    x = "Nombre Institución",
-    y = "Coeficiente RC",
-    size = "N° Estudiantes"
-  ) +
-  theme_prof
-
-combined_plot <- p1 + p2
-
-ggsave("output/va_y_puntajeRC_mate.png", plot = combined_plot, width = 18, height = 6, dpi = 300, limitsize = FALSE)
-
-# Convert each plot
-p1_html <- ggplotly(p1)
-p2_html <- ggplotly(p2)
-
-library(htmlwidgets)
-# Combine in an HTML layout (e.g., side-by-side in tags)
-subplot(p1_html, p2_html, nrows = 1, margin = 0.05) %>%
-  saveWidget("output/va_y_puntajeRC_mate.html", selfcontained = TRUE)
+###############################################################################
 
 
 
 
-library(viridis)
-library(patchwork)
-
-plot_va_and_score <- function(data_scores, data_va, cine_value) {
-  
-  # Filter input data for the selected CINE field
-  data_cine_stad <- data_scores %>%
-    filter(cine_f_2013_ac_campo_especific == cine_value)
-  
-  va_cine <- data_va %>%
-    filter(cine == cine_value)
-  
-  # Define reusable theme
-  theme_prof <- theme_minimal(base_size = 12) +
-    theme(
-      axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
-      axis.text.y = element_text(size = 10),
-      plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
-      legend.position = "none"
-    )
-  
-  # Boxplot: Puntaje de lectura critica por institucion
-  p1 <- ggplot(data_cine_stad, aes(x = nombre_institucion, y = mod_lectura_critica_punt, fill = nombre_institucion)) +
-    geom_boxplot() +
-    scale_fill_viridis_d(option = "D") +
-    labs(
-      title = "Puntaje Lecutura Critica (Saber Pro) por Institución",
-      subtitle = paste("Campo CINE:", cine_value),
-      x = "Institución",
-      y = "Puntaje Razonamiento Cuantitativo"
-    ) +
-    theme_prof
-  
-  # Scatterplot: Valor Agregado (coeficiente_LC) por institución
-  p2 <- ggplot(va_cine, aes(x = nombre_institucion, y = coeficiente_LC, size = n_estudiantes, color = nombre_institucion)) +
-    geom_point(alpha = 0.8) +
-    scale_size_continuous(range = c(2, 10)) +
-    scale_color_viridis_d(option = "D", guide = "none") +
-    labs(
-      title = "Valor Agregado de Lectura Critica por Institución",
-      subtitle = paste("Campo CINE:", cine_value),
-      x = "Nombre Institución",
-      y = "Valor agregado Lectura critica",
-      size = "N° Estudiantes"
-    ) +
-    theme_prof
-  
-  # Convert to interactive plotly
-  # Convert to interactive plotly
-  p1_html <- ggplotly(p1) %>%
-    layout(
-      title = "Puntaje Lectura Crítica por Institución",  # Main title
-      yaxis = list(title = "Puntaje Lectura Crítica")   # Y-axis title
-    )
-  
-  p2_html <- ggplotly(p2) %>%
-    layout(
-      title = "Valor Agregado de Lectura Crítica por Institución",  # Main title
-      yaxis = list(title = "Valor agregado Lectura Crítica")   # Y-axis title
-    )
-  
-  # Combine and save
-  combined_html <- subplot(p1_html, p2_html, nrows = 1, margin = 0.05)
-  saveWidget(combined_html, "output/va_y_puntajeLC_dere.html", selfcontained = TRUE)
-  
-}
-
-combined_plot <- plot_va_and_score(data_scores = data_filtrado, data_va = coefs_lc_df, cine_value = "Derecho")
