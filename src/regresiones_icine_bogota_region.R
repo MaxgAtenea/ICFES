@@ -152,26 +152,37 @@ resumen_nans <- function(df) {
     )
 }
 
-#' Calcular estadísticas de boxplot agrupadas por categorías
-#'
-#' Esta función calcula los valores estadísticos necesarios para construir un boxplot
-#' (cuartil inferior, mediana, cuartil superior, IQR, y límites inferior y superior)
-#' agrupando por las columnas `cine_f_2013_ac_campo_especific` e `icine`.
-
-resumen_boxplot_por_grupo <- function(data, var_numerica) {
-  var_numerica <- enquo(var_numerica)
-  data %>%
-    group_by(cine_f_2013_ac_campo_especific, icine) %>%
-    summarise(
-      lower = quantile(!!var_numerica, 0.25, na.rm = TRUE),
-      middle = quantile(!!var_numerica, 0.5, na.rm = TRUE),
-      upper = quantile(!!var_numerica, 0.75, na.rm = TRUE),
-      iqr = IQR(!!var_numerica, na.rm = TRUE),
-      ymin = lower - 1.5 * iqr,
-      ymax = upper + 1.5 * iqr,
-      .groups = "drop"
-    )
+# Función que calcula ICC y lo une en un dataframe
+calcular_ICC <- function(modelos, var_dependiente) {
+  # Calcular los valores de ICC
+  icc_values <- map(modelos, function(model) {
+    # Extraer los componentes de la varianza
+    var_comps <- as.data.frame(VarCorr(model))
+    
+    # Obtener la varianza a nivel de grupo (intercepto aleatorio) y la varianza residual
+    var_group <- var_comps$vcov[1]  # Varianza del intercepto aleatorio
+    var_residual <- attr(VarCorr(model), "sc")^2  # Varianza residual
+    
+    # Calcular el ICC
+    icc <- var_group / (var_group + var_residual)
+    
+    return(icc)
+  })
+  
+  # Crear el nombre de la columna ICC dinámicamente
+  col_name <- paste0("icc_", var_dependiente)
+  
+  # Crear el data frame con nombres de columna dinámicos
+  icc_df <- data.frame(
+    cine = names(icc_values),
+    valor = unlist(icc_values)
+  )
+  names(icc_df)[2] <- col_name
+  
+  return(icc_df)
 }
+
+
 
 ##########################################
 # DESARROLLO
@@ -310,7 +321,13 @@ data_filtrado %>%
 ### preparar los datos
 tabla_cine <- data_filtrado %>%
   group_by(cine_f_2013_ac_campo_especific, icine) %>%
-  summarise(n_estudiantes = n(), .groups = "drop")
+  summarise(
+    n_estudiantes = n(),
+    promedio_punt_saberpro = mean(punt_global_bdsaberpro),
+    snies_programa = first(estu_snies_prgmacademico),
+    nombre_del_programa = first(nombre_del_programa),
+    .groups = "drop"
+  )
 
 #CONSIDERANDO SABER PRO 2023
 #Numero de instituciones y personas por CINE especifico
@@ -326,7 +343,13 @@ data_filtrado_2023 %>%
 ### preparar los datos
 tabla_cine_2023 <- data_filtrado_2023 %>%
   group_by(cine_f_2013_ac_campo_especific, icine) %>%
-  summarise(n_estudiantes = n(), .groups = "drop")
+  summarise(
+    n_estudiantes = n(),
+    promedio_punt_saberpro = mean(punt_global_bdsaberpro),
+    snies_programa = first(estu_snies_prgmacademico),
+    nombre_del_programa = first(nombre_del_programa),
+    .groups = "drop"
+  )
 
 ##########################################
 #4. CORRELACION
@@ -420,9 +443,19 @@ coefs_pg_df <- coefs_pg_df %>%
 
 coefs_pg_df <- coefs_pg_df %>%
   left_join(
-    tabla_cine %>% select(icine, n_estudiantes),
+    tabla_cine %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa),
     by = "icine"
   )
+
+# obtener el dataframe con los ICCs
+icc_pg_df <- calcular_ICC(modelos_por_cine,"pg")
+
+coefs_pg_df <- coefs_pg_df %>%
+  left_join(
+    icc_pg_df,
+    by = "cine"
+  )
+
 
 ##########################################
 #5.1.2 REGRESION para cada CINE especifico
@@ -472,8 +505,16 @@ coefs_rc_df <- coefs_rc_df %>%
 
 coefs_rc_df <- coefs_rc_df %>%
   left_join(
-    tabla_cine %>% select(icine, n_estudiantes),
+    tabla_cine %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa),
     by = "icine"
+  )
+
+icc_rc_df <- calcular_ICC(modelos_por_cine,"rc")
+
+coefs_rc_df <- coefs_rc_df %>%
+  left_join(
+    icc_rc_df,
+    by = "cine"
   )
 
 ##########################################
@@ -524,8 +565,16 @@ coefs_lc_df <- coefs_lc_df %>%
 
 coefs_lc_df <- coefs_lc_df %>%
   left_join(
-    tabla_cine %>% select(icine, n_estudiantes),
+    tabla_cine %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa),
     by = "icine"
+  )
+
+icc_lc_df <- calcular_ICC(modelos_por_cine,"lc")
+
+coefs_lc_df <- coefs_lc_df %>%
+  left_join(
+    icc_lc_df,
+    by = "cine"
   )
 
 ###############################################################################
@@ -592,8 +641,16 @@ coefs_pg_df_2023 <- coefs_pg_df_2023 %>%
 
 coefs_pg_df_2023 <- coefs_pg_df_2023 %>%
   left_join(
-    tabla_cine_2023 %>% select(icine, n_estudiantes),
+    tabla_cine_2023 %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa),
     by = "icine"
+  )
+
+icc_pg_df_2023 <- calcular_ICC(modelos_por_cine,"pg")
+
+coefs_pg_df_2023 <- coefs_pg_df_2023 %>%
+  left_join(
+    icc_pg_df_2023,
+    by = "cine"
   )
 
 ##########################################
@@ -645,8 +702,16 @@ coefs_rc_df_2023 <- coefs_rc_df_2023 %>%
 
 coefs_rc_df_2023 <- coefs_rc_df_2023 %>%
   left_join(
-    tabla_cine_2023 %>% select(icine, n_estudiantes),
+    tabla_cine_2023 %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa),
     by = "icine"
+  )
+
+icc_rc_df_2023 <- calcular_ICC(modelos_por_cine,"rc")
+
+coefs_rc_df_2023 <- coefs_rc_df_2023 %>%
+  left_join(
+    icc_rc_df_2023,
+    by = "cine"
   )
 
 ##########################################
@@ -698,8 +763,16 @@ coefs_lc_df_2023 <- coefs_lc_df_2023 %>%
 
 coefs_lc_df_2023 <- coefs_lc_df_2023 %>%
   left_join(
-    tabla_cine_2023 %>% select(icine, n_estudiantes),
+    tabla_cine_2023 %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa),
     by = "icine"
+  )
+
+icc_lc_df_2023 <- calcular_ICC(modelos_por_cine,"lc")
+
+coefs_lc_df_2023 <- coefs_lc_df_2023 %>%
+  left_join(
+    icc_lc_df_2023,
+    by = "cine"
   )
 
 ##########################################
@@ -709,14 +782,14 @@ coefs_lc_df_2023 <- coefs_lc_df_2023 %>%
 
 #Valores agregados con base en todos los periodos del Saber PRO
 resumen_coefs <- coefs_pg_df %>%
-  inner_join(coefs_rc_df %>% select(icine, coeficiente_RC), by = "icine") %>%
-  inner_join(coefs_lc_df %>% select(icine, coeficiente_LC), by = "icine") %>%
+  inner_join(coefs_rc_df %>% select(icine, coeficiente_RC, icc_rc), by = "icine") %>%
+  inner_join(coefs_lc_df %>% select(icine, coeficiente_LC, icc_lc), by = "icine") %>% 
   relocate(coeficiente_PG, coeficiente_LC, coeficiente_RC, .after = last_col())
 
 #Valores agregados con base en 2023 del Saber PRO
 resumen_coefs_2023 <- coefs_pg_df_2023 %>%
-  inner_join(coefs_rc_df_2023 %>% select(icine, coeficiente_RC), by = "icine") %>%
-  inner_join(coefs_lc_df_2023 %>% select(icine, coeficiente_LC), by = "icine") %>%
+  inner_join(coefs_rc_df_2023 %>% select(icine, coeficiente_RC, icc_rc), by = "icine") %>%
+  inner_join(coefs_lc_df_2023 %>% select(icine, coeficiente_LC, icc_lc), by = "icine") %>%
   relocate(coeficiente_PG, coeficiente_LC, coeficiente_RC, .after = last_col())
 
 

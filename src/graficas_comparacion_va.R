@@ -237,31 +237,18 @@ resultados_va_2023 <- read_delim("data/Resultados/va_icine_bogota_region_2023.cs
 # por cada CINE
 # Todos los periodos del Saber Pro
 ##########################################
-# library(patchwork)
-# #Ejemplo de una grafica
-# graficar_valor_agregado(resultados_va,"Derecho")
-# #Figura con todas las graficas
-# # Crear una lista vacía para almacenar las gráficas
-# graficas <- list()
-# # Loop para crear las 15 gráficas, una por cada valor de cine
-# for (cine_valor in unique(resultados_va$cine)) {
-#   # Crear cada gráfico usando la función definida previamente
-#   graficas[[cine_valor]] <- graficar_valor_agregado(resultados_va, cine_valor)
-# }
-# # Unir todas las gráficas en una sola figura, distribuidas en 3 filas por 5 columnas
-# grilla_valores_agregados <- wrap_plots(graficas, ncol = 5)
-# # Mostrar la figura final
-# #ggsave("output/grilla_valores_agregados.png", plot = grilla_valores_agregados, width = 15, height = 10)
 
 # Interfaz de usuario
 ui <- fluidPage(
-  titlePanel("Valores Agregados por CINE"),
+  titlePanel("Gráficos Interactivos por CINE"),
   sidebarLayout(
     sidebarPanel(
-      selectInput("cine_input", "Selecciona un CINE:",
-                  choices = sort(unique(resultados_va$cine))),
+      selectInput("dataset_input", "Selecciona el dataset:",
+                  choices = c("Base histórica" = "resultados_va", 
+                              "Base 2023" = "resultados_va_2023")),
+      selectInput("cine_input", "Selecciona un CINE:", choices = NULL),
       h4("Universidades en Q1 y Q3"),
-      dataTableOutput("universidades_q1q3") 
+      dataTableOutput("universidades_q1q3")
     ),
     mainPanel(
       plotlyOutput("grafico_interactivo", height = "700px")
@@ -270,37 +257,47 @@ ui <- fluidPage(
 )
 
 # Lógica del servidor
-server <- function(input, output) {
+server <- function(input, output, session) {
   
-  # Filtrar los datos según el CINE seleccionado
+  # Dataset selector
+  dataset_actual <- reactive({
+    if (input$dataset_input == "resultados_va") {
+      resultados_va
+    } else {
+      resultados_va_2023
+    }
+  })
+  
+  # Update CINE choices when dataset changes
+  observeEvent(dataset_actual(), {
+    updateSelectInput(session, "cine_input",
+                      choices = sort(unique(dataset_actual()$cine)))
+  })
+  
+  # Filtered data
   data_filtrada <- reactive({
-    marcar_extremos_por_cine(resultados_va, input$cine_input)
+    req(input$cine_input)
+    marcar_extremos_por_cine(dataset_actual(), input$cine_input)
   })
   
-  # Renderizar la gráfica
+  # Plot
   output$grafico_interactivo <- renderPlotly({
-    p <- graficar_valor_agregado(resultados_va, input$cine_input)
-    
-    # Agregar título con subtítulo manualmente usando layout
+    req(input$cine_input)
+    p <- graficar_valor_agregado(dataset_actual(), input$cine_input)
     ggplotly(p, tooltip = c("x", "y", "text")) %>%
-      layout(
-        title = list(
-          text = paste0(
-            "Valor Agregado\nLectura Crítica vs Razonamiento Cuantitativo<br>",
-            "<sub>CINE: ", input$cine_input, "</sub>"
-          ),
-          x = 0.5  # Centrar el título
-        )
-      )
+      layout(title = list(
+        text = paste0("Valor Agregado<br><sub>CINE: ", input$cine_input, "</sub>"),
+        x = 0.5
+      ))
   })
   
-  # Renderizar tabla de universidades en Q1 y Q3 ordenadas por distancia_origen
+  # Table
   output$universidades_q1q3 <- renderDataTable({
     data_filtrada() %>%
       filter(cuadrante %in% c("Q1", "Q3")) %>%
-      mutate(magnitud = round(distancia_origen, 1)) %>%  # Redondear distancia_origen a un decimal
-      select(nombre_institucion, cuadrante, magnitud) %>%  # Cambiar nombre de la columna a magnitud
-      arrange(cuadrante, desc(magnitud)) %>%  # Ordenar por cuadrante y magnitud descendente
+      mutate(magnitud = round(distancia_origen, 1)) %>%
+      select(nombre_institucion, cuadrante, magnitud) %>%
+      arrange(cuadrante, desc(magnitud)) %>%
       datatable(options = list(pageLength = 10)) %>%
       formatStyle(
         'cuadrante',
@@ -316,3 +313,22 @@ server <- function(input, output) {
 # Ejecutar la aplicación
 shinyApp(ui = ui, server = server)
 
+########################################
+#PENDIENTE
+########################################
+
+# library(patchwork)
+# #Ejemplo de una grafica
+# graficar_valor_agregado(resultados_va,"Derecho")
+# #Figura con todas las graficas
+# # Crear una lista vacía para almacenar las gráficas
+# graficas <- list()
+# # Loop para crear las 15 gráficas, una por cada valor de cine
+# for (cine_valor in unique(resultados_va$cine)) {
+#   # Crear cada gráfico usando la función definida previamente
+#   graficas[[cine_valor]] <- graficar_valor_agregado(resultados_va, cine_valor)
+# }
+# # Unir todas las gráficas en una sola figura, distribuidas en 3 filas por 5 columnas
+# grilla_valores_agregados <- wrap_plots(graficas, ncol = 5)
+# # Mostrar la figura final
+# #ggsave("output/grilla_valores_agregados.png", plot = grilla_valores_agregados, width = 15, height = 10)
