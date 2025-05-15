@@ -259,7 +259,7 @@ rellenar_na <- function(df, max_filas) {
   return(df)
 }
 
-# Rsumir nans por cada variables
+# Resumir nans por cada variables
 resumen_nans <- function(df) {
   df %>%
     summarise(across(everything(), list(
