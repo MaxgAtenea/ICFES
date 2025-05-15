@@ -434,7 +434,7 @@ codigos_cine <- codigos_cine %>%
 #2.2 NOMBRES CINE
 #Leer base con codigos snies y nombre de la clasificacion cine
 #Base a nivel nacional
-cine_snies <- read_excel("data/SNIES_CINE_raw/programas.xlsx")
+cine_snies <- read_excel("data/SNIES_CINE_raw/programas_nivel_nacional.xlsx")
 
 #Limpiar el nombre de las columnas de cine_sines
 names(cine_snies) <- names(cine_snies) %>%
