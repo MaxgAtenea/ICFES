@@ -255,3 +255,31 @@ BOGOTA_REGION_NOMBRES = [
     "villapinzon",
     "zipaquira"
 ]
+
+#variables del excel descargable en https://hecaa.mineducacion.gov.co/consultaspublicas/programas
+columnas_base_snies =[
+  "codigo_institucion",
+  "codigo_institucion_padre",
+  "nombre_institucion",
+  "estado_institucion",
+  "caracter_academico",
+  "codigo_snies_del_programa",
+  "nombre_del_programa",
+  "titulo_otorgado",
+  "estado_programa",
+  "cine_f_2013_ac_campo_amplio",
+  "cine_f_2013_ac_campo_especific",
+  "cine_f_2013_ac_campo_detallado",
+  "area_de_conocimiento",
+  "nucleo_basico_del_conocimiento",
+  "nivel_academico",
+  "nivel_de_formacion",
+  "modalidad",
+  "numero_creditos",
+  "numero_periodos_de_duracion",
+  "periodicidad",
+  "departamento_oferta_programa",
+  "municipio_oferta_programa",
+  "costo_matricula_estud_nuevos",
+  "reconocimiento_del_ministerio"
+]
