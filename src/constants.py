@@ -145,3 +145,113 @@ dtype_mapping_saberpro = {
     "mod_ingles_punt": "Int64",
     "mod_comuni_escrita_punt": "Int64"
 }
+
+#llave:nombre archivo
+#valor: separador
+nombre_archivos_sabertyt = {
+    "SaberTyT_2020-1.txt":"¬",
+    "SaberTyT_2020-2.txt":"¬",
+    "SaberTyT_2021-1.txt":"¬",
+    "SaberTyT_2021-2.txt":"¬",
+    "SaberTyT_2022-1.txt":"¬",
+    "SaberTyT_2022-2.txt":"¬",
+    "SaberTyT_2023-1.txt":";",
+    "SaberTyT_2023-2.txt":";"
+} 
+
+cols_saber_tyt_lower = [
+    "periodo", #periodo de presentacion de la prueba
+    "estu_consecutivo", #id publico del estudiante
+    "mod_razona_cuantitat_punt", #puntaje en razonamiento cuantitativo
+    "mod_lectura_critica_punt", #puntaje en lectura critica
+    "punt_global", #puntaje global 
+    "inst_cod_institucion", #Codigo de la Institución de  Educación Superior
+    "inst_nombre_institucion", #Nombre de la Institución de  Educación Superior
+    "estu_prgm_academico", # Nombre del programa académico  que estudia
+    "estu_snies_prgmacademico", #Código SNIES del programa  académico que estudia
+    "estu_prgm_codmunicipio", #codigo del municipio donde se ofrece el programa academico 
+    "estu_prgm_municipio", #Nombre del municipio donde se ofrece el programa academico
+    "estu_nucleo_pregrado",  # Nombre del nucleo de pregrado  al que pertenece el programa  academico 
+    "estu_nivel_prgm_academico" #tecnologia, tecnico profesional, universitario
+]
+
+dtype_mapping_sabertyt =  {
+    #"periodo" : "Int64", 
+    "estu_consecutivo":"string" ,
+    "mod_razona_cuantitat_punt": float,
+    "mod_lectura_critica_punt": float,
+    "punt_global":float, 
+    #"inst_cod_institucion":"Int64",
+    "inst_nombre_institucion" :"string", 
+    "estu_prgm_academico": "string",
+    #"estu_snies_prgmacademico":"Int64",
+    #"estu_prgm_codmunicipio": "Int64",
+    "estu_prgm_municipio": "string",
+    "estu_nucleo_pregrado": "string",
+    "estu_nivel_prgm_academico": "string"
+}
+ 
+
+
+#municipios de bogota region
+BOGOTA_REGION_NOMBRES = [
+    "bogota_dc",
+    "arbelaez",
+    "cabrera",
+    "cajica",
+    "carmen_de_carupa",
+    "caqueza",
+    "chia",
+    "chipaque",
+    "choachi",
+    "choconta",
+    "cogua",
+    "cota",
+    "cucunuba",
+    "fusagasuga",
+    "fomeque",
+    "fosca",
+    "fuquene",
+    "gachala",
+    "gachancipa",
+    "gacheta",
+    "gama",
+    "granada",
+    "guacheta",
+    "guatavita",
+    "guasca",
+    "gutierrez",
+    "junin",
+    "la_calera",
+    "lenguazaque",
+    "macheta",
+    "manta",
+    "medina",
+    "nemocon",
+    "pandi",
+    "pasca",
+    "quetame",
+    "san_bernardo",
+    "sesquile",
+    "sibate",
+    "silvania",
+    "simijaca",
+    "soacha",
+    "sopo",
+    "suesca",
+    "susa",
+    "sutatausa",
+    "tabio",
+    "tausa",
+    "tenjo",
+    "tibacuy",
+    "tibirita",
+    "tocancipa",
+    "ubala",
+    "ubate",
+    "ubaque",
+    "une",
+    "venecia",
+    "villapinzon",
+    "zipaquira"
+]
