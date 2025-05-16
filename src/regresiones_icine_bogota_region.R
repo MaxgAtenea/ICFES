@@ -41,22 +41,6 @@ setwd("/home/alejandro/Documentos/ATENEA/Despacho/ICFES")
 #Librerias
 ##################################
 
-#Cargar las librerias
-library(readr) #lectura de archivos text
-library(readxl) #lectura de archivos excel
-library(stringi) #para ajustar nombres de las columnas de los data frames
-library(dplyr) #manipulacion de dataframes
-library(tidyr)
-library(ggplot2) #para graficar
-library(nlme) #activamos la librería/paquete que nos permite estimar el modelo multinivel
-library(stringi) #facilitar la manipulacion de caracteres
-library(stringr)#facilitar la manipulacion de caracteres
-library(plotly) #para graficas dinamicas
-library(lme4)#para la regresion de mixed models
-library(data.tree) #visualizar grupos anidados en forma de arbol
-library(jsonlite) #guardar en formato json
-library(purrr)
-
 # Usando lapply base R
 lapply(c("readr",
          "readxl",
@@ -158,7 +142,7 @@ columnas_exportar = c(
 tipos_cine <- list(
   cine_amplio = list(cine_col = "cine_f_2013_ac_campo_amplio", icine_col = "icine_amplio"),
   cine_especifico = list(cine_col = "cine_f_2013_ac_campo_especific", icine_col = "icine"),
-  cine_detallado = list(cine_col = "cine_f_2013_ac_campo_detallado", icine_col = "cine_detall")
+  cine_detallado = list(cine_col = "cine_f_2013_ac_campo_detallado", icine_col = "icine_detall")
 )
 
 ##########################################
@@ -254,10 +238,13 @@ calcular_sd_condicional <- function(modelos, var_dependiente) {
 #'   con presencia en al menos 5 instituciones distintas.
 #'
 #' @param data Un data frame con los datos completos.
+#' @param tipo_cine_col Nivel CINE que se está considerando
 #' @param año (Opcional) Año específico de presentación del Saber Pro a filtrar. Si es NULL, no se aplica este filtro.
 #' @return Un data frame filtrado según los criterios establecidos.
-filtros_icfes <- function(data, anios = NULL) {
-  data %>%
+filtros_icfes <- function(data, nivel_cine, anios = NULL) {
+  temp_icine <-  tipos_cine[[nivel_cine]]$icine_col
+  temp_cine <-  tipos_cine[[nivel_cine]]$cine_col
+  data_filtrada <- data %>%
     # Filtrar por uno o varios años, si se especifican
     { if (!is.null(anios)) filter(., anio_presentacion_sbpro %in% anios) else . } %>%
     
@@ -276,15 +263,16 @@ filtros_icfes <- function(data, anios = NULL) {
     ungroup() %>%
     
     # Filtro por mínimo 25 estudiantes por ICINE
-    group_by(icine) %>%
+    group_by(!!sym(temp_icine)) %>%
     filter(n() >= 25) %>%
     ungroup() %>%
     
-    # Filtro por mínimo 5 instituciones por campo específico
-    group_by(cine_f_2013_ac_campo_especific) %>%
+    # Filtro por mínimo 5 instituciones por nivel_cine
+    group_by(!!sym(temp_cine)) %>%
     filter(n_distinct(codigo_institucion) >= 5) %>%
     ungroup()
 }
+
 
 
 # ------------------------------------------------------------
@@ -444,9 +432,7 @@ ajustar_efectos_mixtos_por_cine <- function(
 #' @param anios Vector o valor único de años para filtrar la data; NULL para no filtrar.
 #'
 #' @return Data frame con coeficientes agregados por institución y, si se indica, columna 'periodo' con los años usados.
-generar_valores_agregados <- function(data, tipo_cine = "cine_especifico", anios = NULL) {
-  
-  data_filtrado <- filtros_icfes(data, anios=anios)
+generar_valores_agregados <- function(data_filtrado, tipo_cine , anios = NULL) {
   
   # Verificar que el tipo_cine sea válido
   if (!tipo_cine %in% names(tipos_cine)) {
@@ -456,9 +442,6 @@ generar_valores_agregados <- function(data, tipo_cine = "cine_especifico", anios
   # Extraer columnas desde la constante global
   cine_col <- tipos_cine[[tipo_cine]]$cine_col
   icine_col <- tipos_cine[[tipo_cine]]$icine_col
-  
-  # Filtrar la data por año si se especifica
-  data_filtrado <- filtros_icfes(data, anios = anios)
   
   # Ejecutar modelos mixtos para tres variables distintas
   resultados_pg <- ajustar_efectos_mixtos_por_cine(
@@ -549,12 +532,12 @@ data_summary_raw <- resumen_nans(data)
 #2. APLICAR FILTROS ICFES
 # Deprecated (ya lo hace la funcion generar_valores_agregados)
 ##########################################
-
-#Considera todas las observaciones del saber pro
-data_filtrado <- filtros_icfes(data)
-
-#Resumen de los datos por tipo de dato y Nans
-data_filtrado_summary <- resumen_nans(data_filtrado)
+# 
+# #Considera todas las observaciones del saber pro
+# data_filtrado <- filtros_icfes(data)
+# 
+# #Resumen de los datos por tipo de dato y Nans
+# data_filtrado_summary <- resumen_nans(data_filtrado)
 
 ##########################################
 #3. OBSERVACIONES
@@ -624,27 +607,44 @@ correlation_matrix_2023 <- cor(data_filtrado_2023 %>% select (all_of(var_correla
 kable(correlation_matrix_2023, caption = "Correlation Matrix")
 
 ##########################################
-#5. Generar valores agregados
+#5. Generar y exportar valores agregados
 ##########################################
 
-va_2023_2016 <- generar_valores_agregados(data, tipo_cine = "cine_especifico")
-va_2023_2022 <- generar_valores_agregados(data, tipo_cine = "cine_especifico",anios=c(2023,2022))
-va_2022_2021 <- generar_valores_agregados(data, tipo_cine = "cine_especifico",anios=c(2022,2021))
-va_2021_2020 <- generar_valores_agregados(data, tipo_cine = "cine_especifico",anios=c(2021,2020))
-va_2020_2019 <- generar_valores_agregados(data, tipo_cine = "cine_especifico",anios=c(2020,2019))
-va_2019_2018 <- generar_valores_agregados(data, tipo_cine = "cine_especifico",anios=c(2019,2018))
-va_2018_2017 <- generar_valores_agregados(data, tipo_cine = "cine_especifico",anios=c(2018,2017))
-va_2017_2016 <- generar_valores_agregados(data, tipo_cine = "cine_especifico",anios=c(2017,2016))
+# Definir los periodos, incluyendo el total 2016-2023
+periodos <- list(
+  #`2016_2023` = 2016:2023,
+  `2022_2023` = c(2022, 2023),
+  `2021_2022` = c(2021, 2022),
+  `2020_2021` = c(2020, 2021),
+  `2019_2020` = c(2019, 2020),
+  `2018_2019` = c(2018, 2019),
+  `2017_2018` = c(2017, 2018),
+  `2016_2017` = c(2016, 2017)
+)
 
-##########################################
-#6. Exportacion de los resultados
-##########################################
-#Exportar la info
-write_csv(va_2023_2016, "data/Resultados_VA//cine_especifico/bogota_region/va_cine_especifico_2016_2023.csv")
-write_csv(va_2023_2022, "data/Resultados_VA//cine_especifico/bogota_region/va_cine_especifico_2022_2023.csv")
-write_csv(va_2022_2021, "data/Resultados_VA//cine_especifico/bogota_region/va_cine_especifico_2021_2022.csv")
-write_csv(va_2021_2020, "data/Resultados_VA//cine_especifico/bogota_region/va_cine_especifico_2020_2021.csv")
-write_csv(va_2020_2019, "data/Resultados_VA//cine_especifico/bogota_region/va_cine_especifico_2019_2020.csv")
-write_csv(va_2019_2018, "data/Resultados_VA//cine_especifico/bogota_region/va_cine_especifico_2018_2019.csv")
-write_csv(va_2018_2017, "data/Resultados_VA//cine_especifico/bogota_region/va_cine_especifico_2017_2018.csv")
-write_csv(va_2017_2016, "data/Resultados_VA//cine_especifico/bogota_region/va_cine_especifico_2016_2017.csv")
+# Definir tipos de cine a iterar
+niveles_cine <- c("cine_amplio", "cine_especifico", "cine_detallado")
+
+# Iterar primero sobre los periodos
+for (nombre_periodo in names(periodos)) {
+  periodo <- periodos[[nombre_periodo]]
+  print(periodo)
+  for (nivel_cine in niveles_cine) {
+    print(nivel_cine)
+    data_filtrado <- filtros_icfes(data, nivel_cine ,periodo)
+    # Generar los valores agregados para el nivel_cine y periodo
+    va_resultado <- generar_valores_agregados(data_filtrado, nivel_cine, anios = periodo)
+    
+    # Construir la ruta de guardado
+    ruta_directorio <- file.path("data/Resultados_VA", nivel_cine, "bogota_region")
+    dir.create(ruta_directorio, recursive = TRUE, showWarnings = FALSE)
+    
+    # Ruta del archivo
+    ruta_csv <- file.path(ruta_directorio, paste0("va_", nivel_cine, "_", nombre_periodo, ".csv"))
+    
+    # Guardar el resultado
+    write_csv(va_resultado, ruta_csv)
+  }
+}
+
+
