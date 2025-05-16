@@ -207,23 +207,29 @@ data <- data %>%
 # numero estudiantes por icine
 # los programas dentro del icine
 ##################################
-# Función para aplicar resumir_por_cine a cada par, con filtro fijo "Tecnologico"
-resumenes_tecnologico <- lapply(pares_cines, function(par) {
-  resumir_por_cine(data, par$cine, par$icine, nivel_filtrado = "Tecnologico")
-})
-#etiquetamos los dataframes resultantes
-names(resumenes_tecnologico) <- c("amplio", "especifico", "detallado")
 
-# Función para aplicar resumir_por_cine a cada par, con filtro fijo "Formacion Tecnica Profesional"
-resumenes_tecnica_profesional <- lapply(pares_cines, function(par) {
-  resumir_por_cine(data, par$cine, par$icine, nivel_filtrado = "Formacion Tecnica Profesional")
-})
-#etiquetamos los dataframes resultantes
-names(resumenes_tecnica_profesional) <- c("amplio", "especifico", "detallado")
+años <- c(2020, 2021, 2022, 2023)
 
-# Exportar para Tecnologico
-exportar_resumenes(resumenes_tecnologico, "tecnologico")
-exportar_resumenes(resumenes_tecnica_profesional, "tecnicos")
+for (año in años) {
+  # Filtrar los datos por año
+  data_temp <- data %>% filter(año_presentacion == año)
+  
+  # Resúmenes para nivel "Tecnologico"
+  resumenes_tecnologico <- lapply(pares_cines, function(par) {
+    resumir_por_cine(data_temp, par$cine, par$icine, nivel_filtrado = "Tecnologico")
+  })
+  names(resumenes_tecnologico) <- c("amplio", "especifico", "detallado")
+  
+  # Resúmenes para nivel "Formacion Tecnica Profesional"
+  resumenes_tecnica_profesional <- lapply(pares_cines, function(par) {
+    resumir_por_cine(data_temp, par$cine, par$icine, nivel_filtrado = "Formacion Tecnica Profesional")
+  })
+  names(resumenes_tecnica_profesional) <- c("amplio", "especifico", "detallado")
+  
+  # Exportar resultados con sufijo del año
+  exportar_resumenes(resumenes_tecnologico, paste0("tecnologico_", año))
+  exportar_resumenes(resumenes_tecnica_profesional, paste0("tecnico_", año))
+}
 
 
 ##################################
@@ -232,6 +238,12 @@ exportar_resumenes(resumenes_tecnica_profesional, "tecnicos")
 # numero estudiantes
 ##################################
 
-promedios_programa <- resumir_por_programa(data)
+for (año in años){
+  data_temp <- data %>% filter(año_presentacion == año)
+  promedios_programa <- resumir_por_programa(data_temp)
+  write_csv(promedios_programa, file = paste0("data/Promedios/promedios_programa_tecnico_", año, ".csv"))
+}
 
-write_csv(promedios_programa, "data/Promedios/promedios_programas_tyt.csv")
+
+
+

@@ -56,6 +56,24 @@ library(lme4)#para la regresion de mixed models
 library(data.tree) #visualizar grupos anidados en forma de arbol
 library(jsonlite) #guardar en formato json
 library(purrr)
+
+# Usando lapply base R
+lapply(c("readr",
+         "readxl",
+         "stringi",
+         "dplyr", "tidyr",
+         "ggplot2",
+         "nlme",
+         "stringr",
+         "plotly",
+         "lme4",
+         "data.tree",
+         "jsonlite",
+         "purrr"),
+       library,
+       character.only = TRUE
+       )
+
 ##############################################
 #Correr este bloque antes de cargar library(gt)
 #install.packages("gt")
@@ -72,7 +90,9 @@ library(purrr)
 columnas_regresion <- c(
   "estu_consecutivo_bdsaber11",
   "estu_consecutivo_bdsaberpro",
+  'icine_amplio',
   "icine",
+  'icine_detall',
   "codigo_institucion",
   "inst_cod_institucion",
   "inst_nombre_institucion",
@@ -132,6 +152,13 @@ columnas_exportar = c(
   "coeficiente_PG",
   "coeficiente_LC",
   "coeficiente_RC"
+)
+
+
+tipos_cine <- list(
+  cine_amplio = list(cine_col = "cine_f_2013_ac_campo_amplio", icine_col = "icine_amplio"),
+  cine_especifico = list(cine_col = "cine_f_2013_ac_campo_especific", icine_col = "icine"),
+  cine_detallado = list(cine_col = "cine_f_2013_ac_campo_detallado", icine_col = "cine_detall")
 )
 
 ##########################################
@@ -212,6 +239,268 @@ calcular_sd_condicional <- function(modelos, var_dependiente) {
 }
 
 
+#' Filtrar y depurar datos según criterios del ICFES
+#'
+#' Esta función toma la base consolidada del icfes junto con la informacion de los programas
+#' y realiza los filtros que el icfes hace en su metodología del VA:
+#' 
+#' - El puntaje global del Saber Pro debe ser distinto de cero.
+#' - Se selecciona solo el primer resultado del Saber Pro por estudiante.
+#' - Se considera una ventana temporal válida entre la presentación del Saber 11 y Saber Pro:
+#'     - Para Medicina: entre 40 y 90 periodos de diferencia.
+#'     - Para otros programas: entre 40 y 80 periodos.
+#' - Se requiere un mínimo de 25 estudiantes por categoría `icine`.
+#' - Se conservan solo los campos específicos (`cine_f_2013_ac_campo_especific`) 
+#'   con presencia en al menos 5 instituciones distintas.
+#'
+#' @param data Un data frame con los datos completos.
+#' @param año (Opcional) Año específico de presentación del Saber Pro a filtrar. Si es NULL, no se aplica este filtro.
+#' @return Un data frame filtrado según los criterios establecidos.
+filtros_icfes <- function(data, anios = NULL) {
+  data %>%
+    # Filtrar por uno o varios años, si se especifican
+    { if (!is.null(anios)) filter(., anio_presentacion_sbpro %in% anios) else . } %>%
+    
+    # Filtros fijos
+    filter(
+      punt_global_bdsaberpro != 0,
+      (
+        (cine_f_2013_ac_campo_detallado == "Medicina" & dif_periodos >= 40 & dif_periodos <= 90) |
+          (cine_f_2013_ac_campo_detallado != "Medicina" & dif_periodos >= 40 & dif_periodos <= 80)
+      )
+    ) %>%
+    
+    # Quedarse con el primer Saber Pro por estudiante
+    group_by(estu_consecutivo_bdsaberpro) %>%
+    slice_min(order_by = periodo_bdsaberpro, n = 1, with_ties = FALSE) %>%
+    ungroup() %>%
+    
+    # Filtro por mínimo 25 estudiantes por ICINE
+    group_by(icine) %>%
+    filter(n() >= 25) %>%
+    ungroup() %>%
+    
+    # Filtro por mínimo 5 instituciones por campo específico
+    group_by(cine_f_2013_ac_campo_especific) %>%
+    filter(n_distinct(codigo_institucion) >= 5) %>%
+    ungroup()
+}
+
+
+# ------------------------------------------------------------
+# Función: resumir_por_cine
+# Descripción: 
+# Resume el dataframe agrupando por dos columnas dadas, calculando
+# el número de estudiantes, el promedio de 'punt_global' y 
+# valores representativos de columnas clave.
+# ------------------------------------------------------------
+promedio_sbpro_por_cine <- function(df, cine, icine) {
+  df %>%
+    group_by(across(all_of(c(cine, icine)))) %>%
+    summarise(
+      n_estudiantes = n(),
+      promedio_punt_saberpro = mean(punt_global_bdsaberpro),
+      nombre_institucion = first(nombre_institucion),
+      snies_programas = paste(unique(estu_snies_prgmacademico), collapse = "; "),
+      nombres_programas = paste(unique(nombre_del_programa), collapse = "; "),
+      .groups = "drop"
+    )
+}
+
+#' Resumen de icines y numero estudiantes por campo CINE
+#'
+#' Esta función agrupa los datos por un campo CINE (por defecto, el campo específico)
+#' y resume el número total de personas y la cantidad de icine distintos.
+#'
+#' @param data Dataframe a analizar
+#' @param columna_cine Nombre de la columna de agrupación CINE
+#' @return Un dataframe con los totales de personas y de instituciones distintas por campo CINE
+observaciones_por_cine <- function(data, columna_cine) {
+  data %>%
+    group_by(.data[[columna_cine]]) %>%
+    summarise(
+      total_personas = n(),
+      icine_distintos = n_distinct(icine),
+      .groups = "drop"
+    ) %>%
+    arrange(desc(icine_distintos))
+}
+
+
+#' Ajusta modelos lineales mixtos por grupo CINE y extrae efectos aleatorios por ICINE
+#'
+#' Esta función ajusta modelos lineales mixtos usando `lmer()` para cada grupo definido 
+#' por una columna CINE (por ejemplo, campo específico, amplio o detallado). Cada modelo 
+#' predice una variable dependiente a partir de puntajes de áreas del Saber 11 como 
+#' predictores fijos y un intercepto aleatorio por icine. 
+#'
+#' A partir de los modelos ajustados, la función extrae los efectos aleatorios institucionales 
+#' (valor agregado), los une con información institucional básica y, opcionalmente, con una tabla 
+#' externa de resumen por icine. Además, calcula la desviación estándar condicional para 
+#' cada modelo.
+#'
+#' @param data Data frame con la información completa.
+#' @param cine_col String con el nombre de la columna que define los grupos CINE (por ejemplo, "cine_f_2013_ac_campo_especific").
+#' @param dep_var String con el nombre de la variable dependiente de la regresión (por ejemplo, "punt_global_bdsaberpro").
+#' @param icine_col String con el nombre de la columna que representa la institución (por ejemplo, "icine", "icine_amplio").
+#' @param nombre_intercepto Nombre que se asignará a la columna del intercepto en el output final (por defecto, "coeficiente_PG").
+#' @param sufijo Sufijo usado para nombrar columnas en el cálculo de desviación condicional (por ejemplo, "pg").
+#' @param tabla_cine (Opcional) Data frame con resumen por institución para unir al resultado final.
+#'
+#' @return Un data frame que contiene: efectos aleatorios por institución, nombre y código de institución,
+#'         información complementaria (si se proporciona `tabla_cine`) y desviaciones estándar condicionales.
+ajustar_efectos_mixtos_por_cine <- function(
+    data,
+    cine_col,               # Nombre de la columna que representa el tipo de CINE (amplio, específico, detallado)
+    dep_var,                # Variable dependiente de la regresión (por ejemplo, punt_global_bdsaberpro)
+    icine_col,              # Columna que representa el agrupador aleatorio (icine, icine_amplio, etc.)
+    nombre_intercepto = "coeficiente_PG", # Nombre que se le dará a la columna del intercepto en el output
+    sufijo = "pg"        # Sufijo usado en calcular_sd_condicional para identificar el tipo de variable
+) {
+  
+  # Convertir las columnas de agrupación a factores
+  data[[icine_col]] <- as.factor(data[[icine_col]])
+  data[[cine_col]] <- as.factor(data[[cine_col]])
+  
+  # 1. Ajustar modelos mixtos lineales por cada grupo definido en cine_col
+  modelos_por_cine <- data %>%
+    split(.[[cine_col]]) %>%  # Dividir los datos por el tipo de cine
+    map(~ lmer(
+      formula = as.formula( # Armar la fórmula de manera dinámica usando la variable dependiente
+        paste0(dep_var, " ~ punt_mate_conciliado + punt_lectura_critica_conciliado + ",
+               "punt_c_naturales_conciliado + punt_sociales_conciliado + ",
+               "punt_ingles_conciliado + (1 | ", icine_col, ")")
+      ),
+      data = .x
+    ))
+  
+  # 2. Extraer los efectos aleatorios del agrupador (icine) para cada modelo (recuerde que es un modelo por CINE)
+  valores_agregados <- map2(
+    modelos_por_cine,
+    names(modelos_por_cine),
+    ~ ranef(.x)[[icine_col]] %>%              # Extrae los efectos aleatorios de cada modelo
+      as.data.frame() %>%
+      mutate(
+        !!icine_col := rownames(ranef(.x)[[icine_col]]), # Añadir columna icine con nombre de la fila
+        cine = .y                                        # Añadir el valor del grupo cine actual
+      ) %>%
+      rename(!!nombre_intercepto := `(Intercept)`)       # Renombrar el intercepto
+  )
+  
+  # 3. Combinar todos los efectos aleatorios en un único data frame
+  coefs_df <- bind_rows(valores_agregados) %>%
+    arrange(desc(!!sym(nombre_intercepto)))  # Ordenar por el valor del efecto aleatorio
+  
+  # 4. Unir con información institucional básica (nombre y código)
+  info_instituciones <- data %>%
+    select(all_of(c(icine_col, "nombre_institucion", "codigo_institucion"))) %>%
+    distinct()
+  
+  coefs_df <- coefs_df %>%
+    left_join(info_instituciones, by = icine_col)
+
+  #promedio puntaje saber pro, n_estudiantes, programas y nombre de programas por icine
+  tabla_cine <- promedio_sbpro_por_cine(data, cine_col, icine_col)
+  
+  columnas_unicas <- setdiff(names(tabla_cine), names(coefs_df))
+  columnas_a_unir <- unique(c(icine_col, columnas_unicas))
+  
+  coefs_df <- coefs_df %>%
+    left_join(tabla_cine %>% select(all_of(columnas_a_unir)), by = icine_col)
+  
+  # 6. Calcular y unir la desviación estándar condicional del modelo
+  #desviaciones_condicionales_df <- calcular_sd_condicional(modelos_por_cine, sufijo)
+  
+  #coefs_df <- coefs_df %>%
+    #left_join(desviaciones_condicionales_df, by = c(icine_col, icine_col))
+  
+  # 7. Retornar el data frame final 
+  coefs_df <- coefs_df %>%
+    select(
+      all_of(c(
+        cine_col,
+        icine_col,
+        "nombre_institucion",
+        "codigo_institucion",
+        "snies_programas",
+        "nombres_programas",
+        "n_estudiantes",
+        "promedio_punt_saberpro",
+        nombre_intercepto
+      ))
+    )  %>% arrange(!!sym(cine_col), desc(!!sym(nombre_intercepto)))
+
+
+  return(coefs_df)
+}
+
+#' Genera los valores agregados de puntaje global, razonamiento cuant, lectura critca
+#'
+#' Ajusta modelos de efectos mixtos para tres variables dependientes y devuelve los coeficientes por icine,
+#' agrupando según el tipo de CINE y filtrando opcionalmente por años.
+#'
+#' @param data Data frame con los datos originales.
+#' @param tipo_cine Tipo de agrupación CINE: "cine_amplio", "cine_especifico" o "cine_detallado".
+#' @param anios Vector o valor único de años para filtrar la data; NULL para no filtrar.
+#'
+#' @return Data frame con coeficientes agregados por institución y, si se indica, columna 'periodo' con los años usados.
+generar_valores_agregados <- function(data, tipo_cine = "cine_especifico", anios = NULL) {
+  
+  data_filtrado <- filtros_icfes(data, anios=anios)
+  
+  # Verificar que el tipo_cine sea válido
+  if (!tipo_cine %in% names(tipos_cine)) {
+    stop("El tipo de cine especificado no es válido.")
+  }
+  
+  # Extraer columnas desde la constante global
+  cine_col <- tipos_cine[[tipo_cine]]$cine_col
+  icine_col <- tipos_cine[[tipo_cine]]$icine_col
+  
+  # Filtrar la data por año si se especifica
+  data_filtrado <- filtros_icfes(data, anios = anios)
+  
+  # Ejecutar modelos mixtos para tres variables distintas
+  resultados_pg <- ajustar_efectos_mixtos_por_cine(
+    data = data_filtrado,
+    cine_col = cine_col,
+    icine_col = icine_col,
+    dep_var = "punt_global_bdsaberpro",
+    nombre_intercepto = "coeficiente_PG",
+    sufijo = "pg"
+  )
+  
+  resultados_rc <- ajustar_efectos_mixtos_por_cine(
+    data = data_filtrado,
+    cine_col = cine_col,
+    icine_col = icine_col,
+    dep_var = "mod_razona_cuantitat_punt",
+    nombre_intercepto = "coeficiente_RC",
+    sufijo = "rc"
+  )
+  
+  resultados_lc <- ajustar_efectos_mixtos_por_cine(
+    data = data_filtrado,
+    cine_col = cine_col,
+    icine_col = icine_col,
+    dep_var = "mod_lectura_critica_punt",
+    nombre_intercepto = "coeficiente_LC",
+    sufijo = "lc"
+  )
+  
+  # Unir los resultados de efectos aleatorios por institución
+  resumen_coefs <- resultados_pg %>%
+    inner_join(resultados_rc %>% select(!!icine_col, coeficiente_RC), by = icine_col) %>%
+    inner_join(resultados_lc %>% select(!!icine_col, coeficiente_LC), by = icine_col) %>%
+    relocate(coeficiente_PG, coeficiente_LC, coeficiente_RC, .after = last_col())
+  
+  if (!is.null(anios)) {
+    resumen_coefs <- resumen_coefs %>%
+      mutate(periodo = paste(anios, collapse = "-"))
+  }
+  
+  return(resumen_coefs)
+}
 
 ##########################################
 # DESARROLLO
@@ -234,6 +523,13 @@ data <- read_delim("data/BD/icfes_cine.csv", escape_double = FALSE, trim_ws = TR
 data <- data %>%
   select(all_of(columnas_regresion))
 
+#anio_presentacion_sbpro = año cuando se presento el saber pro
+data <- data %>%
+  mutate(
+    anio_presentacion_sbpro = periodo_bdsaberpro%/%10,
+    anio_presentacion_sb11 = periodo_bdsaber11%/%10,
+    )
+
 #FILTRAR POR:
 #programa activo
 #programa universitario
@@ -251,137 +547,57 @@ data_summary_raw <- resumen_nans(data)
 
 ##########################################
 #2. APLICAR FILTROS ICFES
+# Deprecated (ya lo hace la funcion generar_valores_agregados)
 ##########################################
 
-#Filtros:
-#su puntaje del saber pro es distinto de 0
-#si una persona hizo 2 saber pro, quedarse con la observacion con el saber pro mas viejo
-#eliminar los icine que tienen menos de 25 estudiantes
-#Cada cine_f_2013_ac_campo_especific debe estar en almenos 5 codigo_institucion
-#To do: el filtro del 40% de la poblacion total
-
-#Considerar saber PRO de TODOS LOS AÑOS
-data_filtrado <- data %>%
-  filter(
-    punt_global_bdsaberpro != 0,  # El puntaje global del saber pro no puede ser 0
-    (
-      # Filtro de ventana temporal entre la presentacion del saber pro y saber 11
-      (cine_f_2013_ac_campo_detallado == "Medicina" & dif_periodos >= 40 & dif_periodos <= 90) |
-        (cine_f_2013_ac_campo_detallado != "Medicina" & dif_periodos >= 40 & dif_periodos <= 80)
-    )
-  ) %>%
-  group_by(estu_consecutivo_bdsaberpro) %>%
-  slice_min(order_by = periodo_bdsaberpro, n = 1, with_ties = FALSE) %>% #quedarse con el primer saber pro
-  ungroup() %>%
-  group_by(icine) %>%
-  filter(n() >= 25) %>% #minimo 25 estudiantes por icine
-  ungroup() %>%
-  group_by(cine_f_2013_ac_campo_especific) %>%
-  filter(n_distinct(codigo_institucion) >= 5) %>%  #el cine debe estar en minimo 5 instituciones 
-  ungroup()
-
-#Considerar UNICAMENTE saber pro de 2023
-data_filtrado_2023 <- data %>%
-  filter(
-    punt_global_bdsaberpro != 0,  # El puntaje global del saber pro no puede ser 0
-    periodo_bdsaberpro == 20232 | periodo_bdsaberpro == 20231,
-    (
-      # Filtro de ventana temporal entre la presentacion del saber pro y saber 11
-      (cine_f_2013_ac_campo_detallado == "Medicina" & dif_periodos >= 40 & dif_periodos <= 90) |
-        (cine_f_2013_ac_campo_detallado != "Medicina" & dif_periodos >= 40 & dif_periodos <= 80)
-    )
-  ) %>%
-  group_by(estu_consecutivo_bdsaberpro) %>%
-  slice_min(order_by = periodo_bdsaberpro, n = 1, with_ties = FALSE) %>% #quedarse con el primer saber pro
-  ungroup() %>%
-  group_by(icine) %>%
-  filter(n() >= 25) %>% #minimo 25 estudiantes por icine
-  ungroup() %>%
-  group_by(cine_f_2013_ac_campo_especific) %>%
-  filter(n_distinct(codigo_institucion) >= 5) %>%  #el cine debe estar en minimo 5 instituciones 
-  ungroup()
+#Considera todas las observaciones del saber pro
+data_filtrado <- filtros_icfes(data)
 
 #Resumen de los datos por tipo de dato y Nans
 data_filtrado_summary <- resumen_nans(data_filtrado)
 
 ##########################################
 #3. OBSERVACIONES
+# Deprecated
 ##########################################
 
-#numero observaciones por icine
-#346 icine distintos
-observaciones_icine <- data_filtrado %>%
-  group_by(icine) %>%
-  summarise(count = n()) %>%
-  arrange(desc(count))
+# #numero observaciones por icine
+# #346 icine distintos
+# observaciones_icine <- data_filtrado %>%
+#   group_by(icine) %>%
+#   summarise(count = n()) %>%
+#   arrange(desc(count))
+# 
+# #Quedan 50 NBC unicos
+# #Recordar que hay una categoria demas llamada "sin clasificar".
+# #El problema con el campo NBC es que no es un id sino un string, entonces no es fiable
+# length(unique(data_filtrado$nucleo_basico_del_conocimiento))
+# length(unique(data_filtrado$estu_nucleo_pregrado))
+# 
+# #Existen 16 CINE especificos unicos para este ejercicio
+# length(unique(data_filtrado$cine_f_2013_ac_campo_especific))
+# 
+# #instituciones consideradas: 79
+# n_distinct(data_filtrado$inst_nombre_institucion)
+# n_distinct(data_filtrado$codigo_institucion)
+# 
+# #numero programas: 909
+# n_distinct(data_filtrado$estu_snies_prgmacademico)
 
-#Quedan 50 NBC unicos
-#Recordar que hay una categoria demas llamada "sin clasificar".
-#El problema con el campo NBC es que no es un id sino un string, entonces no es fiable
-length(unique(data_filtrado$nucleo_basico_del_conocimiento))
-length(unique(data_filtrado$estu_nucleo_pregrado))
-
-#Existen 16 CINE especificos unicos para este ejercicio
-length(unique(data_filtrado$cine_f_2013_ac_campo_especific))
-
-#instituciones consideradas: 79
-n_distinct(data_filtrado$inst_nombre_institucion)
-n_distinct(data_filtrado$codigo_institucion)
-
-#numero programas: 909
-n_distinct(data_filtrado$estu_snies_prgmacademico)
-
-
-##########################################
-#3. OBSERVACIONES POR ANIDACION
-##########################################
-
-#CONSIDERANDO SABER PRO TODOS LOS PERIODOS
-#Numero de instituciones y personas por CINE especifico
-data_filtrado %>%
-  group_by(cine_f_2013_ac_campo_especific) %>%
-  summarise(
-    total_personas = n(),
-    icine_distintos = n_distinct(icine)
-  ) %>%
-  arrange(desc(icine_distintos))
-
-##Ver los icines por cada CINE y el numero de observaciones
-### preparar los datos
-tabla_cine <- data_filtrado %>%
-  group_by(cine_f_2013_ac_campo_especific, icine) %>%
-  summarise(
-    n_estudiantes = n(),
-    promedio_punt_saberpro = mean(punt_global_bdsaberpro),
-    snies_programa = first(estu_snies_prgmacademico),
-    nombre_del_programa = first(nombre_del_programa),
-    .groups = "drop"
-  )
-
-#CONSIDERANDO SABER PRO 2023
-#Numero de instituciones y personas por CINE especifico
-data_filtrado_2023 %>%
-  group_by(cine_f_2013_ac_campo_especific) %>%
-  summarise(
-    total_personas = n(),
-    icine_distintos = n_distinct(icine)
-  ) %>%
-  arrange(desc(icine_distintos))
-
-##Ver los icines por cada CINE y el numero de observaciones
-### preparar los datos
-tabla_cine_2023 <- data_filtrado_2023 %>%
-  group_by(cine_f_2013_ac_campo_especific, icine) %>%
-  summarise(
-    n_estudiantes = n(),
-    promedio_punt_saberpro = mean(punt_global_bdsaberpro),
-    snies_programa = first(estu_snies_prgmacademico),
-    nombre_del_programa = first(nombre_del_programa),
-    .groups = "drop"
-  )
 
 ##########################################
-#4. CORRELACION
+#3. OBSERVACIONES POR ANIDACION CINE
+##########################################
+
+#Numero de icines y personas por CINE especifico
+n_observaciones_cine =  observaciones_por_cine(data_filtrado, "cine_f_2013_ac_campo_especific")
+
+#Numero de icines y personas por CINE especifico
+n_observaciones_cine_2023 =  observaciones_por_cine(data_filtrado_2023, "cine_f_2013_ac_campo_especific")
+
+##########################################
+#4. CORRELACION de las variables
+# TODO : Reformular
 ##########################################
 library(knitr)
 
@@ -408,420 +624,27 @@ correlation_matrix_2023 <- cor(data_filtrado_2023 %>% select (all_of(var_correla
 kable(correlation_matrix_2023, caption = "Correlation Matrix")
 
 ##########################################
-#5. REGRESION
+#5. Generar valores agregados
 ##########################################
 
-##########################################
-#5.1 REGRESION con el Saber PRO de todos 
-#los periodos
-##########################################
-
-#Fijamos la BD con la que vamos a trabajar para faciliar la llamada de cada variable
-attach(data_filtrado)
-# Convertimos a factor la variable icine
-data_filtrado$icine <- as.factor(data_filtrado$icine)
-data_filtrado$cine_f_2013_ac_campo_especific <- as.factor(data_filtrado$cine_f_2013_ac_campo_especific)
-
-#LA REGRESION LA EJECUTAMOS CON LMER
+va_2023_2016 <- generar_valores_agregados(data, tipo_cine = "cine_especifico")
+va_2023_2022 <- generar_valores_agregados(data, tipo_cine = "cine_especifico",anios=c(2023,2022))
+va_2022_2021 <- generar_valores_agregados(data, tipo_cine = "cine_especifico",anios=c(2022,2021))
+va_2021_2020 <- generar_valores_agregados(data, tipo_cine = "cine_especifico",anios=c(2021,2020))
+va_2020_2019 <- generar_valores_agregados(data, tipo_cine = "cine_especifico",anios=c(2020,2019))
+va_2019_2018 <- generar_valores_agregados(data, tipo_cine = "cine_especifico",anios=c(2019,2018))
+va_2018_2017 <- generar_valores_agregados(data, tipo_cine = "cine_especifico",anios=c(2018,2017))
+va_2017_2016 <- generar_valores_agregados(data, tipo_cine = "cine_especifico",anios=c(2017,2016))
 
 ##########################################
-#5.1.1 REGRESION para cada CINE especifico
-#Puntaje global Saber Pro
-#Puntaje global conciliado Saber 11
-##########################################
-
-# Lista de modelos por grupo CINE
-modelos_por_cine <- data_filtrado %>%
-  split(.$cine_f_2013_ac_campo_especific) %>%
-  map(~ lmer(
-    punt_global_bdsaberpro ~ 
-      punt_mate_conciliado +
-      punt_lectura_critica_conciliado +
-      punt_c_naturales_conciliado +
-      punt_sociales_conciliado + 
-      punt_ingles_conciliado +
-      (1 | icine)
-    , data = .x)
-    )
-
-# Resumen de cada modelo
-resumenes <- map(modelos_por_cine, summary)
-
-# Efectos aleatorios (valor agregado) de cada modelo
-valores_agregados <- map2(
-  modelos_por_cine,
-  names(modelos_por_cine),
-  ~ ranef(.x)$icine %>%
-    as.data.frame() %>%
-    mutate(icine = rownames(ranef(.x)$icine),
-           cine = .y) %>%
-    rename(coeficiente_PG = `(Intercept)`)
-)
-
-# Unir todos los valores agregados en un solo data.frame ordenado
-coefs_pg_df <- bind_rows(valores_agregados) %>%
-  arrange(desc(coeficiente_PG))
-
-# Seleccionar icine, nombre_institucion y codigo_institucion únicos desde el dataset original
-info_instituciones <- data_filtrado %>%
-  select(icine, nombre_institucion, codigo_institucion) %>%
-  distinct()
-
-coefs_pg_df <- coefs_pg_df %>%
-  left_join(info_instituciones, by = c("icine" = "icine"))
-
-coefs_pg_df <- coefs_pg_df %>%
-  left_join(
-    tabla_cine %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa, promedio_punt_saberpro),
-    by = "icine"
-  )
-
-desviaciones_condicionales_df <- calcular_sd_condicional(modelos_por_cine, "pg")
-
-coefs_pg_df <- coefs_pg_df %>%
-  left_join(desviaciones_condicionales_df, by = c("icine", "cine"))
-
-
-
-##########################################
-#5.1.2 REGRESION para cada CINE especifico
-#Puntaje Razonamiento cuant. Saber Pro
-#Puntaje global Saber 11
-##########################################
-
-# Lista de modelos por grupo CINE
-modelos_por_cine <- data_filtrado %>%
-  split(.$cine_f_2013_ac_campo_especific) %>%
-  map(~ lmer(
-    mod_razona_cuantitat_punt ~ 
-      punt_mate_conciliado +
-      punt_lectura_critica_conciliado +
-      punt_c_naturales_conciliado +
-      punt_sociales_conciliado + 
-      punt_ingles_conciliado +
-      (1 | icine)
-    , data = .x)
-  )
-
-# Resumen de cada modelo
-resumenes <- map(modelos_por_cine, summary)
-
-# Efectos aleatorios (valor agregado) de cada modelo
-valores_agregados <- map2(
-  modelos_por_cine,
-  names(modelos_por_cine),
-  ~ ranef(.x)$icine %>%
-    as.data.frame() %>%
-    mutate(icine = rownames(ranef(.x)$icine),
-           cine = .y) %>%
-    rename(coeficiente_RC = `(Intercept)`)
-)
-
-# Unir todos los valores agregados en un solo data.frame ordenado
-coefs_rc_df <- bind_rows(valores_agregados) %>%
-  arrange(desc(coeficiente_RC))
-
-# Seleccionar icine, nombre_institucion y codigo_institucion únicos desde el dataset original
-info_instituciones <- data_filtrado %>%
-  select(icine, nombre_institucion, codigo_institucion) %>%
-  distinct()
-
-coefs_rc_df <- coefs_rc_df %>%
-  left_join(info_instituciones, by = c("icine" = "icine"))
-
-coefs_rc_df <- coefs_rc_df %>%
-  left_join(
-    tabla_cine %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa, promedio_punt_saberpro),
-    by = "icine"
-  )
-
-desviaciones_condicionales_df <- calcular_sd_condicional(modelos_por_cine, "rc")
-
-coefs_rc_df <- coefs_rc_df %>%
-  left_join(desviaciones_condicionales_df, by = c("icine", "cine"))
-
-##########################################
-#5.1.3 REGRESION para cada CINE especifico
-#Puntaje Lectura Critica Saber Pro
-#Puntaje global Saber 11
-##########################################
-
-# Lista de modelos por grupo CINE
-modelos_por_cine <- data_filtrado %>%
-  split(.$cine_f_2013_ac_campo_especific) %>%
-  map(~ lmer(
-    mod_lectura_critica_punt ~ 
-      punt_mate_conciliado +
-      punt_lectura_critica_conciliado +
-      punt_c_naturales_conciliado +
-      punt_sociales_conciliado + 
-      punt_ingles_conciliado +
-      (1 | icine)
-    , data = .x)
-  )
-
-# Resumen de cada modelo
-resumenes <- map(modelos_por_cine, summary)
-
-# Efectos aleatorios (valor agregado) de cada modelo
-valores_agregados <- map2(
-  modelos_por_cine,
-  names(modelos_por_cine),
-  ~ ranef(.x)$icine %>%
-    as.data.frame() %>%
-    mutate(icine = rownames(ranef(.x)$icine),
-           cine = .y) %>%
-    rename(coeficiente_LC = `(Intercept)`)
-)
-
-# Unir todos los valores agregados en un solo data.frame ordenado
-coefs_lc_df <- bind_rows(valores_agregados) %>%
-  arrange(desc(coeficiente_LC))
-
-# Seleccionar icine, nombre_institucion y codigo_institucion únicos desde el dataset original
-info_instituciones <- data_filtrado %>%
-  select(icine, nombre_institucion, codigo_institucion) %>%
-  distinct()
-
-coefs_lc_df <- coefs_lc_df %>%
-  left_join(info_instituciones, by = c("icine" = "icine"))
-
-coefs_lc_df <- coefs_lc_df %>%
-  left_join(
-    tabla_cine %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa, promedio_punt_saberpro),
-    by = "icine"
-  )
-
-desviaciones_condicionales_df <- calcular_sd_condicional(modelos_por_cine, "lc")
-
-coefs_lc_df <- coefs_lc_df %>%
-  left_join(desviaciones_condicionales_df, by = c("icine", "cine"))
-
-###############################################################################
-##########################################
-#5.2 REGRESION con el Saber PRO del 2023
-##########################################
-#Desfijamos la BD de la seccion 5.1
-detach(data_filtrado)
-
-#Fijamos la BD con la que vamos a trabajar para faciliar la llamada de cada variable
-attach(data_filtrado_2023)
-# Convertimos a factor la variable icine
-data_filtrado_2023$icine <- as.factor(data_filtrado_2023$icine)
-data_filtrado_2023$cine_f_2013_ac_campo_especific <- as.factor(data_filtrado_2023$cine_f_2013_ac_campo_especific)
-
-#LA REGRESION LA EJECUTAMOS CON LMER
-
-##########################################
-#5.2.1 REGRESION para cada CINE especifico
-#SABER PRO 2023
-#Puntaje global Saber Pro
-#Puntaje global conciliado Saber 11
-##########################################
-
-# Lista de modelos por grupo CINE
-modelos_por_cine <- data_filtrado_2023 %>%
-  split(.$cine_f_2013_ac_campo_especific) %>%
-  map(~ lmer(
-    punt_global_bdsaberpro ~ 
-      punt_mate_conciliado +
-      punt_lectura_critica_conciliado +
-      punt_c_naturales_conciliado +
-      punt_sociales_conciliado + 
-      punt_ingles_conciliado +
-      (1 | icine)
-    , data = .x)
-  )
-
-# Resumen de cada modelo
-resumenes <- map(modelos_por_cine, summary)
-
-# Efectos aleatorios (valor agregado) de cada modelo
-valores_agregados <- map2(
-  modelos_por_cine,
-  names(modelos_por_cine),
-  ~ ranef(.x)$icine %>%
-    as.data.frame() %>%
-    mutate(icine = rownames(ranef(.x)$icine),
-           cine = .y) %>%
-    rename(coeficiente_PG = `(Intercept)`)
-)
-
-# Unir todos los valores agregados en un solo data.frame ordenado
-coefs_pg_df_2023 <- bind_rows(valores_agregados) %>%
-  arrange(desc(coeficiente_PG))
-
-# Seleccionar icine, nombre_institucion y codigo_institucion únicos desde el dataset original
-info_instituciones <- data_filtrado_2023 %>%
-  select(icine, nombre_institucion, codigo_institucion) %>%
-  distinct()
-
-coefs_pg_df_2023 <- coefs_pg_df_2023 %>%
-  left_join(info_instituciones, by = c("icine" = "icine"))
-
-coefs_pg_df_2023 <- coefs_pg_df_2023 %>%
-  left_join(
-    tabla_cine_2023 %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa, promedio_punt_saberpro),
-    by = "icine"
-  )
-
-desviaciones_condicionales_df <- calcular_sd_condicional(modelos_por_cine, "pg")
-
-coefs_pg_df_2023 <- coefs_pg_df_2023 %>%
-  left_join(desviaciones_condicionales_df, by = c("icine", "cine"))
-
-##########################################
-#5.2.2 REGRESION para cada CINE especifico
-#SABER PRO 2023
-#Puntaje Razonamiento cuant. Saber Pro
-#Puntaje global Saber 11
-##########################################
-
-# Lista de modelos por grupo CINE
-modelos_por_cine <- data_filtrado_2023 %>%
-  split(.$cine_f_2013_ac_campo_especific) %>%
-  map(~ lmer(
-    mod_razona_cuantitat_punt ~ 
-      punt_mate_conciliado +
-      punt_lectura_critica_conciliado +
-      punt_c_naturales_conciliado +
-      punt_sociales_conciliado + 
-      punt_ingles_conciliado +
-      (1 | icine)
-    , data = .x)
-  )
-
-# Resumen de cada modelo
-resumenes <- map(modelos_por_cine, summary)
-
-# Efectos aleatorios (valor agregado) de cada modelo
-valores_agregados <- map2(
-  modelos_por_cine,
-  names(modelos_por_cine),
-  ~ ranef(.x)$icine %>%
-    as.data.frame() %>%
-    mutate(icine = rownames(ranef(.x)$icine),
-           cine = .y) %>%
-    rename(coeficiente_RC = `(Intercept)`)
-)
-
-# Unir todos los valores agregados en un solo data.frame ordenado
-coefs_rc_df_2023 <- bind_rows(valores_agregados) %>%
-  arrange(desc(coeficiente_RC))
-
-# Seleccionar icine, nombre_institucion y codigo_institucion únicos desde el dataset original
-info_instituciones <- data_filtrado_2023 %>%
-  select(icine, nombre_institucion, codigo_institucion) %>%
-  distinct()
-
-coefs_rc_df_2023 <- coefs_rc_df_2023 %>%
-  left_join(info_instituciones, by = c("icine" = "icine"))
-
-coefs_rc_df_2023 <- coefs_rc_df_2023 %>%
-  left_join(
-    tabla_cine_2023 %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa, promedio_punt_saberpro),
-    by = "icine"
-  )
-
-desviaciones_condicionales_df <- calcular_sd_condicional(modelos_por_cine, "rc")
-
-coefs_rc_df_2023 <- coefs_rc_df_2023 %>%
-  left_join(desviaciones_condicionales_df, by = c("icine", "cine"))
-
-##########################################
-#5.2.3 REGRESION para cada CINE especifico
-# SABER PRO 2023
-#Puntaje Lectura Critica Saber Pro
-#Puntaje global Saber 11
-##########################################
-
-# Lista de modelos por grupo CINE
-modelos_por_cine <- data_filtrado_2023 %>%
-  split(.$cine_f_2013_ac_campo_especific) %>%
-  map(~ lmer(
-    mod_lectura_critica_punt ~ 
-      punt_mate_conciliado +
-      punt_lectura_critica_conciliado +
-      punt_c_naturales_conciliado +
-      punt_sociales_conciliado + 
-      punt_ingles_conciliado +
-      (1 | icine)
-    , data = .x)
-  )
-
-# Resumen de cada modelo
-resumenes <- map(modelos_por_cine, summary)
-
-# Efectos aleatorios (valor agregado) de cada modelo
-valores_agregados <- map2(
-  modelos_por_cine,
-  names(modelos_por_cine),
-  ~ ranef(.x)$icine %>%
-    as.data.frame() %>%
-    mutate(icine = rownames(ranef(.x)$icine),
-           cine = .y) %>%
-    rename(coeficiente_LC = `(Intercept)`)
-)
-
-# Unir todos los valores agregados en un solo data.frame ordenado
-coefs_lc_df_2023 <- bind_rows(valores_agregados) %>%
-  arrange(desc(coeficiente_LC))
-
-# Seleccionar icine, nombre_institucion y codigo_institucion únicos desde el dataset original
-info_instituciones <- data_filtrado_2023 %>%
-  select(icine, nombre_institucion, codigo_institucion) %>%
-  distinct()
-
-coefs_lc_df_2023 <- coefs_lc_df_2023 %>%
-  left_join(info_instituciones, by = c("icine" = "icine"))
-
-coefs_lc_df_2023 <- coefs_lc_df_2023 %>%
-  left_join(
-    tabla_cine_2023 %>% select(icine, n_estudiantes,snies_programa,nombre_del_programa, promedio_punt_saberpro),
-    by = "icine"
-  )
-
-desviaciones_condicionales_df <- calcular_sd_condicional(modelos_por_cine, "lc")
-
-coefs_lc_df_2023 <- coefs_lc_df_2023 %>%
-  left_join(desviaciones_condicionales_df, by = c("icine", "cine"))
-
-
-##########################################
-#6. Unir los coeficientes de va en un
-#unico df
-##########################################
-
-#Valores agregados con base en todos los periodos del Saber PRO
-resumen_coefs <- coefs_pg_df %>%
-  inner_join(coefs_rc_df %>% select(icine, coeficiente_RC, sd_cond_rc), by = "icine") %>%
-  inner_join(coefs_lc_df %>% select(icine, coeficiente_LC, sd_cond_lc), by = "icine") %>% 
-  relocate(coeficiente_PG, coeficiente_LC, coeficiente_RC, .after = last_col())
-
-#Valores agregados con base en 2023 del Saber PRO
-resumen_coefs_2023 <- coefs_pg_df_2023 %>%
-  inner_join(coefs_rc_df_2023 %>% select(icine, coeficiente_RC, sd_cond_rc), by = "icine") %>%
-  inner_join(coefs_lc_df_2023 %>% select(icine, coeficiente_LC, sd_cond_lc), by = "icine") %>%
-  relocate(coeficiente_PG, coeficiente_LC, coeficiente_RC, .after = last_col())
-
-
-##########################################
-#7. Exportacion de los resultados
+#6. Exportacion de los resultados
 ##########################################
 #Exportar la info
-write_csv(resumen_coefs, "data/Resultados/va_icine_bogota_region.csv")
-write_csv(resumen_coefs_2023, "data/Resultados/va_icine_bogota_region_2023.csv")
-
-
-##########################################
-#8. Exportacion de la data empleada en 
-# la estimacion
-##########################################
-write_csv(data_filtrado, "data/BD/data_estimacion_todos_periodos.csv")
-write_csv(data_filtrado_2023, "data/BD/data_estimacion_2023.csv")
-
-###############################################################################
-
-
-
-
+write_csv(va_2023_2016, "data/Resultados_VA//cine_especifico/bogota_region/va_cine_especifico_2016_2023.csv")
+write_csv(va_2023_2022, "data/Resultados_VA//cine_especifico/bogota_region/va_cine_especifico_2022_2023.csv")
+write_csv(va_2022_2021, "data/Resultados_VA//cine_especifico/bogota_region/va_cine_especifico_2021_2022.csv")
+write_csv(va_2021_2020, "data/Resultados_VA//cine_especifico/bogota_region/va_cine_especifico_2020_2021.csv")
+write_csv(va_2020_2019, "data/Resultados_VA//cine_especifico/bogota_region/va_cine_especifico_2019_2020.csv")
+write_csv(va_2019_2018, "data/Resultados_VA//cine_especifico/bogota_region/va_cine_especifico_2018_2019.csv")
+write_csv(va_2018_2017, "data/Resultados_VA//cine_especifico/bogota_region/va_cine_especifico_2017_2018.csv")
+write_csv(va_2017_2016, "data/Resultados_VA//cine_especifico/bogota_region/va_cine_especifico_2016_2017.csv")

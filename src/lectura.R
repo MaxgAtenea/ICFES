@@ -538,7 +538,8 @@ data <- data %>%
 #Crear la variable ICINE que pretende ser el analogo al INBC
 data <- data %>%
   mutate(icine = paste(codigo_institucion, cine_f_2013_ac_campo_especific, sep = "_"),
-         icine_detall = paste(codigo_institucion, cine_f_2013_ac_campo_detallado, sep = "_")
+         icine_detall = paste(codigo_institucion, cine_f_2013_ac_campo_detallado, sep = "_"),
+         icine_amplio = paste(codigo_institucion, cine_f_2013_ac_campo_amplio, sep = "_")
   )
 
 #6. Resumen de Nans
