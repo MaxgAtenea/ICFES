@@ -134,7 +134,7 @@ listado_nbc_men <- c(
 variables_codigo_cine <- c(
   "codigo_snies_del_programa",
   "programa_academico",
-  "nucleo_basico_del_conocimiento_nbc",
+  #"nucleo_basico_del_conocimiento_nbc",
   "id_cine_campo_amplio",
   "id_cine_campo_especifico",
   "id_cine_campo_detallado",
@@ -312,7 +312,8 @@ municipios <- read_delim("data/Municipios_cleaned/municipios.csv", escape_double
 #Leer la base consolidada del Saber Pro cruzado con Saber 11
 #A nivel de Bogota
 #icfes <- read_delim("data/BD/icfes_bd.csv", escape_double = FALSE, trim_ws = TRUE)
-icfes <- read_delim("data/BD/icfes_bogota_region.csv", escape_double = FALSE, trim_ws = TRUE)
+#icfes <- read_delim("data/BD/icfes_bogota_region.csv", escape_double = FALSE, trim_ws = TRUE)
+icfes <- read_delim("data/BD/saber11_nacional_saberpro_bogota_region.csv", escape_double = FALSE, trim_ws = TRUE)
 
 #Limpiar la columna estu_nucleo_pregrado y actualizarla en el dataframe
 #sutilezas en la redaccion generan campos duplicados
@@ -450,8 +451,7 @@ cine_snies <- cine_snies %>%
 
 #2.3 Unir los dataframes cine_snies y codigos_cine
 
-#left join porque la base cine_snies tiene los nombres cine del programa 
-#y le damos prioridad al nombre que al codigo
+#left join porque la base cine_snies es mas completa
 base_cine <- left_join(
   cine_snies,
   codigos_cine,
@@ -539,7 +539,8 @@ data <- data %>%
 data <- data %>%
   mutate(icine = paste(codigo_institucion, cine_f_2013_ac_campo_especific, sep = "_"),
          icine_detall = paste(codigo_institucion, cine_f_2013_ac_campo_detallado, sep = "_"),
-         icine_amplio = paste(codigo_institucion, cine_f_2013_ac_campo_amplio, sep = "_")
+         icine_amplio = paste(codigo_institucion, cine_f_2013_ac_campo_amplio, sep = "_"),
+         inbc = paste(codigo_institucion, nucleo_basico_del_conocimiento , sep = "_")
   )
 
 #6. Resumen de Nans

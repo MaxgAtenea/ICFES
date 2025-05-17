@@ -506,13 +506,6 @@ data <- read_delim("data/BD/icfes_cine.csv", escape_double = FALSE, trim_ws = TR
 data <- data %>%
   select(all_of(columnas_regresion))
 
-#anio_presentacion_sbpro = año cuando se presento el saber pro
-data <- data %>%
-  mutate(
-    anio_presentacion_sbpro = periodo_bdsaberpro%/%10,
-    anio_presentacion_sb11 = periodo_bdsaber11%/%10,
-    )
-
 #FILTRAR POR:
 #programa activo
 #programa universitario
