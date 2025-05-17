@@ -74,6 +74,7 @@ lapply(c("readr",
 columnas_regresion <- c(
   "estu_consecutivo_bdsaber11",
   "estu_consecutivo_bdsaberpro",
+  'inbc',
   'icine_amplio',
   "icine",
   'icine_detall',
@@ -100,7 +101,9 @@ columnas_regresion <- c(
   "punt_global_bdsaberpro",
   "punt_global_bdsaber11_conciliado",
   "periodo_bdsaber11",
+  "anio_presentacion_sb11",
   "periodo_bdsaberpro",
+  "anio_presentacion_sbpro",
   "dif_periodos",
   "nombre_del_programa",
   "estado_programa",
@@ -139,10 +142,11 @@ columnas_exportar = c(
 )
 
 
-tipos_cine <- list(
+nivel_agregacion <- list(
   cine_amplio = list(cine_col = "cine_f_2013_ac_campo_amplio", icine_col = "icine_amplio"),
   cine_especifico = list(cine_col = "cine_f_2013_ac_campo_especific", icine_col = "icine"),
-  cine_detallado = list(cine_col = "cine_f_2013_ac_campo_detallado", icine_col = "icine_detall")
+  cine_detallado = list(cine_col = "cine_f_2013_ac_campo_detallado", icine_col = "icine_detall"),
+  nbc = list(cine_col = "nucleo_basico_del_conocimiento", icine_col = "inbc")
 )
 
 ##########################################
@@ -242,8 +246,8 @@ calcular_sd_condicional <- function(modelos, var_dependiente) {
 #' @param año (Opcional) Año específico de presentación del Saber Pro a filtrar. Si es NULL, no se aplica este filtro.
 #' @return Un data frame filtrado según los criterios establecidos.
 filtros_icfes <- function(data, nivel_cine, anios = NULL) {
-  temp_icine <-  tipos_cine[[nivel_cine]]$icine_col
-  temp_cine <-  tipos_cine[[nivel_cine]]$cine_col
+  temp_icine <-  nivel_agregacion[[nivel_cine]]$icine_col
+  temp_cine <-  nivel_agregacion[[nivel_cine]]$cine_col
   data_filtrada <- data %>%
     # Filtrar por uno o varios años, si se especifican
     { if (!is.null(anios)) filter(., anio_presentacion_sbpro %in% anios) else . } %>%
@@ -435,13 +439,13 @@ ajustar_efectos_mixtos_por_cine <- function(
 generar_valores_agregados <- function(data_filtrado, tipo_cine , anios = NULL) {
   
   # Verificar que el tipo_cine sea válido
-  if (!tipo_cine %in% names(tipos_cine)) {
+  if (!tipo_cine %in% names(nivel_agregacion)) {
     stop("El tipo de cine especificado no es válido.")
   }
   
   # Extraer columnas desde la constante global
-  cine_col <- tipos_cine[[tipo_cine]]$cine_col
-  icine_col <- tipos_cine[[tipo_cine]]$icine_col
+  cine_col <- nivel_agregacion[[tipo_cine]]$cine_col
+  icine_col <- nivel_agregacion[[tipo_cine]]$icine_col
   
   # Ejecutar modelos mixtos para tres variables distintas
   resultados_pg <- ajustar_efectos_mixtos_por_cine(
@@ -505,18 +509,6 @@ data <- read_delim("data/BD/icfes_cine.csv", escape_double = FALSE, trim_ws = TR
 #Seleccionar las columnas de interes
 data <- data %>%
   select(all_of(columnas_regresion))
-
-#FILTRAR POR:
-#programa activo
-#programa universitario
-#programa pregrado
-
-data <- data %>%
-   filter(
-     estado_programa == "Activo",
-     nivel_de_formacion=="Universitario",
-     nivel_academico=="Pregrado",
- )
 
 #Resumen de los datos por tipo de dato y Nans
 data_summary_raw <- resumen_nans(data)
@@ -616,28 +608,42 @@ periodos <- list(
 )
 
 # Definir tipos de cine a iterar
-niveles_cine <- c("cine_amplio", "cine_especifico", "cine_detallado")
+#niveles_cine <- c("cine_amplio", "cine_especifico", "cine_detallado", "nbc")
 
-# Iterar primero sobre los periodos
-for (nombre_periodo in names(periodos)) {
-  periodo <- periodos[[nombre_periodo]]
-  print(periodo)
-  for (nivel_cine in niveles_cine) {
-    print(nivel_cine)
-    data_filtrado <- filtros_icfes(data, nivel_cine ,periodo)
-    # Generar los valores agregados para el nivel_cine y periodo
-    va_resultado <- generar_valores_agregados(data_filtrado, nivel_cine, anios = periodo)
+niveles_cine <- c("nbc")
+
+periodos <- list(
+  `2021_2022` = c(2021, 2022)
+)
+
+guardar_valores_agregados <- function(data, periodos, niveles_cine) {
+  for (nombre_periodo in names(periodos)) {
+    periodo <- periodos[[nombre_periodo]]
+    print(periodo)
     
-    # Construir la ruta de guardado
-    ruta_directorio <- file.path("data/Resultados_VA", nivel_cine, "bogota_region")
-    dir.create(ruta_directorio, recursive = TRUE, showWarnings = FALSE)
-    
-    # Ruta del archivo
-    ruta_csv <- file.path(ruta_directorio, paste0("va_", nivel_cine, "_", nombre_periodo, ".csv"))
-    
-    # Guardar el resultado
-    write_csv(va_resultado, ruta_csv)
+    for (nivel_cine in niveles_cine) {
+      print(nivel_cine)
+      
+      data_filtrado <- filtros_icfes(data, nivel_cine, periodo)
+      
+      # Generar los valores agregados
+      va_resultado <- generar_valores_agregados(data_filtrado, nivel_cine, anios = periodo)
+      
+      # Construir la ruta de guardado
+      ruta_directorio <- file.path("data/Resultados_VA", nivel_cine, "bogota_region")
+      dir.create(ruta_directorio, recursive = TRUE, showWarnings = FALSE)
+      
+      # Ruta del archivo
+      ruta_csv <- file.path(ruta_directorio, paste0("va_", nivel_cine, "_", nombre_periodo, ".csv"))
+      
+      # Guardar el resultado
+      write_csv(va_resultado, ruta_csv)
+    }
   }
 }
+
+# Ejecutar la función
+guardar_valores_agregados(data, periodos, niveles_cine)
+
 
 
