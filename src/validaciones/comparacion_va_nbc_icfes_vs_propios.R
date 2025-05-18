@@ -20,7 +20,8 @@ lapply(c("readr",
          "lme4",
          "data.tree",
          "jsonlite",
-         "purrr"),
+         "purrr",
+         "patchwork"),
        library,
        character.only = TRUE
 )
@@ -28,7 +29,7 @@ lapply(c("readr",
 ##########################################
 # CONSTANTES
 ##########################################
-
+#columnas de interes en el excel con los resultados del icfes del va
 columnas_va_icfes <-c(
   "nbc",
   "inst_cod_institucion",
@@ -66,7 +67,7 @@ resumen_nans <- function(df) {
     )
 }
 
-#' Resumen de icines y numero estudiantes por campo CINE
+#' Resumen de inbcs y numero estudiantes por campo CINE
 #'
 #' Esta función agrupa los datos por un campo CINE (por defecto, el campo específico)
 #' y resume el número total de personas y la cantidad de icine distintos.
@@ -101,15 +102,18 @@ va_icfes <- va_icfes %>%
 #2. HOMOGENEIZAR COLUMNAS
 ##########################################
 
-va_icfes$nbc <- limpiar_texto_nbc(va_icfes$nbc)
+#se eliminan tildes y mayusculas en columna de inbc
 va_icfes$inst_nbc <- limpiar_texto_nbc(va_icfes$inst_nbc)
-
-va_propio$nucleo_basico_del_conocimiento <- limpiar_texto_nbc(va_propio$nucleo_basico_del_conocimiento)
 va_propio$inbc <- limpiar_texto_nbc(va_propio$inbc)
 
+#se eliminan tildes y mayusculas en columna de nucleo basico del conocimiento
+va_icfes$nbc <- limpiar_texto_nbc(va_icfes$nbc)
+va_propio$nucleo_basico_del_conocimiento <- limpiar_texto_nbc(va_propio$nucleo_basico_del_conocimiento)
+
+
+#codigo institucion se trata como char
 va_icfes <- va_icfes %>%
   mutate(inst_cod_institucion = as.character(inst_cod_institucion))
-
 va_propio <- va_propio %>%
   mutate(codigo_institucion = as.character(codigo_institucion))
 
@@ -149,7 +153,7 @@ va_merged_sin_na <- va_merged %>% drop_na()
 
 
 ##########################################
-#3 NBC e instituciones que no pegaron
+#3 NBC e instituciones que no coincidieron
 ##########################################
 
 conteo_nbc_propio <- observaciones_por_nbc(va_propio, "nucleo_basico_del_conocimiento", "inbc")
@@ -172,7 +176,7 @@ conteos <- conteos %>%
     )
 
 ##########################################
-#4 Ranking IES por NBC
+#4 Ranking IES por cada NBC
 ##########################################
 attach(va_merged_sin_na)
 
@@ -193,25 +197,46 @@ va_merged_sin_na <- va_merged_sin_na %>%
     diferencia_ranking_lc = ranking_va_lectura_critica - ranking_coeficiente_lc,
   )
 
+# Histograma para diferencia_ranking_rc
+p1 <- ggplot(va_merged_sin_na, aes(x = diferencia_ranking_rc)) +
+  geom_histogram(fill = "darkblue", color = "white") +
+  theme_minimal() +
+  labs(
+    title = "Diferencia Ranking VA-RC ",
+    x = "Diferencia de Ranking RC",
+    y = "Frecuencia"
+  )
 
-# Calcular correlación de Pearson (por defecto)
-cor(coeficiente_RC, va_razona_cuantitat, use = "complete.obs")
-cor(coeficiente_LC, va_lectura_critica, use = "complete.obs")
+# Histograma para diferencia_ranking_lc
+p2 <-ggplot(va_merged_sin_na, aes(x = diferencia_ranking_lc)) +
+  geom_histogram(fill = "darkblue", color = "white") +
+  theme_minimal() +
+  labs(
+    title = "Diferencia Ranking VA-LC ",
+    x = "Diferencia de Ranking LC",
+    y = "Frecuencia"
+  )
 
-
+p1 / p2 
 ##########################################
-#4 Ranking IES por NBC
+#5 correlacion entre los resultados del icfes y resultados propios
 ##########################################
 
 # Función con tidy eval para graficar scatter con correlación
 plot_correlation <- function(df, xvar, yvar) {
+  # Calcular correlación y pendiente
+  modelo <- lm(df[[yvar]] ~ df[[xvar]])
+  pendiente <- coef(modelo)[2] %>% round(2)
   cor_val <- cor(df[[xvar]], df[[yvar]], use = "complete.obs") %>% round(2)
-  etiqueta_cor <- paste0("Cor = ", cor_val)
   
+  # Etiqueta que muestra correlación y pendiente
+  etiqueta <- paste0("Cor = ", cor_val, "\nPendiente = ", pendiente)
+  
+  # Gráfico
   ggplot(df, aes(x = .data[[xvar]], y = .data[[yvar]])) +
     geom_point(alpha = 0.6) +
     geom_smooth(method = "lm", se = FALSE, color = "blue") +
-    annotate("text", x = Inf, y = -Inf, label = etiqueta_cor,
+    annotate("text", x = Inf, y = -Inf, label = etiqueta,
              hjust = 1.1, vjust = -0.5, size = 5, color = "red") +
     theme_minimal() +
     labs(
@@ -227,71 +252,4 @@ p2 <- plot_correlation(va_merged_sin_na, "coeficiente_RC", "va_razona_cuantitat"
 
 # Mostrar juntos
 grid.arrange(p1, p2, ncol = 1)
-
-
-library(ggplot2)
-library(dplyr)
-
-reporte_correlacion <- function(df, xvar, yvar) {
-  # Filtrar datos válidos
-  df_filtrado <- df %>%
-    filter(!is.na(.data[[xvar]]), !is.na(.data[[yvar]])) %>%
-    filter(is.finite(.data[[xvar]]), is.finite(.data[[yvar]]))
-  
-  # Calcular correlación
-  cor_val <- cor(df_filtrado[[xvar]], df_filtrado[[yvar]], use = "complete.obs") %>% round(3)
-  
-  # Ajustar modelo lineal
-  modelo <- lm(as.formula(paste(yvar, "~", xvar)), data = df_filtrado)
-  coeficientes <- coef(modelo)
-  intercepto <- coeficientes[1]
-  pendiente <- coeficientes[2]
-  
-  # Predicciones del modelo
-  preds <- predict(modelo, newdata = df_filtrado)
-  
-  # Valores de la línea y=x
-  valores_yx <- df_filtrado[[xvar]]
-  
-  # Calcular RMSE entre regresión y línea y=x
-  rmse <- sqrt(mean((preds - valores_yx)^2)) %>% round(3)
-  
-  # Etiqueta con correlación
-  etiqueta_cor <- paste0("Cor = ", cor_val)
-  
-  # Crear plot
-  p <- ggplot(df_filtrado, aes(x = .data[[xvar]], y = .data[[yvar]])) +
-    geom_point(alpha = 0.6) +
-    geom_smooth(method = "lm", se = FALSE, color = "blue") +
-    geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +
-    annotate("text", x = Inf, y = -Inf, label = etiqueta_cor,
-             hjust = 1.1, vjust = -0.5, size = 5, color = "red") +
-    theme_minimal() +
-    labs(
-      title = paste("Scatter plot", xvar, "vs", yvar),
-      x = xvar,
-      y = yvar
-    )
-  
-  # Devolver lista con métricas y plot
-  return(list(
-    plot = p,
-    correlacion = cor_val,
-    intercepto = intercepto,
-    pendiente = pendiente,
-    rmse = rmse
-  ))
-}
-
-resultado_lc <- reporte_correlacion(va_merged, "coeficiente_LC", "va_lectura_critica")
-resultado_rc <- reporte_correlacion(va_merged, "coeficiente_RC", "va_razona_cuantitat")
-
-# Mostrar plots
-library(gridExtra)
-grid.arrange(resultado_lc$plot, resultado_rc$plot, ncol = 1)
-
-# Revisar métricas
-print(resultado_lc)
-print(resultado_rc)
-
 
