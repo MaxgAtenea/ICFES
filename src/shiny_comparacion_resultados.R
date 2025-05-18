@@ -110,7 +110,7 @@ resumen_boxplot_por_grupo <- function(data, var_numerica) {
 
 marcar_extremos_por_cine <- function(data, cine_valor) {
   data %>%
-    filter(cine == cine_valor) %>%
+    filter(cine_f_2013_ac_campo_especific == cine_valor) %>%
     mutate(
       # Calcular la distancia al origen
       distancia_origen = sqrt(coeficiente_LC^2 + coeficiente_RC^2),
@@ -146,7 +146,6 @@ marcar_extremos_por_cine <- function(data, cine_valor) {
 #' Parámetros:
 #' - @data: dataframe con los datos a graficar.
 #' - @cine_valor: valor de cine para filtrar los datos y personalizar el título del gráfico.
-
 graficar_valor_agregado <- function(data, cine_valor) {
   # Filtrar data por el valor de cine
   data_temp <- marcar_extremos_por_cine(data,cine_valor)
@@ -178,15 +177,6 @@ graficar_valor_agregado <- function(data, cine_valor) {
     # Ejes
     geom_vline(xintercept = 0, linetype = "solid", color = "black") +
     geom_hline(yintercept = 0, linetype = "solid", color = "black") +
-    # Etiquetas para extremos
-    geom_text(
-      data = filter(data_temp, es_extremo == 1),
-      aes(label = paste0(nombre_institucion, " (n=", n_estudiantes, ")")),
-      size = 3,
-      color = "black",
-      hjust = -0.1,
-      vjust = -0.5
-    ) +
     # Etiqueta origen
     annotate("text", x = 0, y = 0, label = "(0, 0)", hjust = -0.2, vjust = -0.5, size = 3) +
     # Títulos y ejes
@@ -209,6 +199,7 @@ graficar_valor_agregado <- function(data, cine_valor) {
 }
 
 
+
 ##########################################
 # LECTURA DATOS
 ##########################################
@@ -221,10 +212,12 @@ archivos <- list.files(carpeta, pattern = "\\.csv$", full.names = TRUE)
 # Cargar todos los archivos como una lista de dataframes
 resultados_va_list <- lapply(archivos, read_delim, escape_double = FALSE, trim_ws = TRUE)
 
-# Asignar nombres a cada elemento de la lista usando los nombres de archivo (sin extensión)
+# Asignar nombres con base en el nombre del archivo sin extensión
 names(resultados_va_list) <- archivos |>
   basename() |>
   str_remove("\\.csv$")
+
+resultados_va <- bind_rows(resultados_va_list, .id = "origen_archivo")
 ##########################################
 # 1. GRAFICAS VA_LC vs VA_RC
 # por cada CINE
@@ -241,9 +234,8 @@ ui <- fluidPage(
   titlePanel("Gráficos Interactivos por CINE"),
   sidebarLayout(
     sidebarPanel(
-      selectInput("dataset_input", "Selecciona el dataset:",
-                  choices = c("Base histórica" = "resultados_va", 
-                              "Base 2023" = "resultados_va_2023")),
+      selectInput("periodo_input", "Selecciona el periodo:",
+                  choices = sort(unique(resultados_va$periodo))),
       selectInput("cine_input", "Selecciona un CINE:", choices = NULL),
       h4("Universidades en Q1 y Q3"),
       dataTableOutput("universidades_q1q3")
@@ -257,39 +249,40 @@ ui <- fluidPage(
 # Lógica del servidor
 server <- function(input, output, session) {
   
-  # Dataset selector
-  dataset_actual <- reactive({
-    if (input$dataset_input == "resultados_va") {
-      resultados_va
-    } else {
-      resultados_va_2023
-    }
+  # Data reactiva filtrada por periodo
+  data_por_periodo <- reactive({
+    req(input$periodo_input)
+    resultados_va %>%
+      filter(periodo == input$periodo_input)
   })
   
-  # Update CINE choices when dataset changes
-  observeEvent(dataset_actual(), {
+  # Actualizar CINEs cuando cambia el periodo
+  observeEvent(input$periodo_input, {
+    req(data_por_periodo())
     updateSelectInput(session, "cine_input",
-                      choices = sort(unique(dataset_actual()$cine)))
+                      choices = sort(unique(data_por_periodo()$cine_f_2013_ac_campo_especific)),
+                      selected = character(0))
   })
   
-  # Filtered data
+  # Filtrar datos finales por periodo y CINE
   data_filtrada <- reactive({
     req(input$cine_input)
-    marcar_extremos_por_cine(dataset_actual(), input$cine_input)
+    marcar_extremos_por_cine(data_por_periodo(), input$cine_input)
   })
   
-  # Plot
+  # Gráfico
   output$grafico_interactivo <- renderPlotly({
     req(input$cine_input)
-    p <- graficar_valor_agregado(dataset_actual(), input$cine_input)
+    p <- graficar_valor_agregado(data_por_periodo(), input$cine_input)
     ggplotly(p, tooltip = c("x", "y", "text")) %>%
       layout(title = list(
-        text = paste0("Valor Agregado<br><sub>CINE: ", input$cine_input, "</sub>"),
+        text = paste0("Valor Agregado<br><sub>Periodo: ", input$periodo_input, 
+                      " | CINE: ", input$cine_input, "</sub>"),
         x = 0.5
       ))
   })
   
-  # Table
+  # Tabla de universidades en Q1 y Q3
   output$universidades_q1q3 <- renderDataTable({
     data_filtrada() %>%
       filter(cuadrante %in% c("Q1", "Q3")) %>%
@@ -310,6 +303,7 @@ server <- function(input, output, session) {
 
 # Ejecutar la aplicación
 shinyApp(ui = ui, server = server)
+
 
 ########################################
 #PENDIENTE
