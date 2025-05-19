@@ -146,48 +146,45 @@ marcar_extremos_por_cine <- function(data, cine_valor) {
 #' Parámetros:
 #' - @data: dataframe con los datos a graficar.
 #' - @cine_valor: valor de cine para filtrar los datos y personalizar el título del gráfico.
-graficar_valor_agregado <- function(data, cine_valor) {
-  # Filtrar data por el valor de cine
-  data_temp <- marcar_extremos_por_cine(data,cine_valor)
+graficar_valor_agregado_comparacion <- function(data, cine_valor) {
+  lim <- max(abs(c(data$coeficiente_LC, data$coeficiente_RC)), na.rm = TRUE)
   
-  # Calcular límite para ejes
-  lim <- max(abs(c(data_temp$coeficiente_LC, data_temp$coeficiente_RC)), na.rm = TRUE)
+  # Colores dinámicos según los valores en periodo_origen
+  periodos <- unique(data$periodo_origen)
+  colores_periodo <- setNames(
+    c("#1f77b4", "red")[seq_along(periodos)],
+    periodos
+  )
   
-  # Construir gráfico
-  ggplot(data_temp, aes(x = coeficiente_LC, y = coeficiente_RC)) +
-    # Q1: verde claro
+  ggplot(data, aes(x = coeficiente_LC, y = coeficiente_RC)) +
     geom_rect(aes(xmin = 0, xmax = lim, ymin = 0, ymax = lim),
-              fill = "palegreen", alpha = 0.2) +
-    # Q3: amarillo claro
+              fill = "palegreen", alpha = 0.2, inherit.aes = FALSE) +
     geom_rect(aes(xmin = -lim, xmax = 0, ymin = -lim, ymax = 0),
-              fill = "khaki", alpha = 0.2) +
-    # Puntos normales
+              fill = "khaki", alpha = 0.2, inherit.aes = FALSE) +
+    
     geom_point(
-      data = filter(data_temp, is.na(color)),
-      aes(text = paste0(nombre_institucion, " (n=", n_estudiantes, ")")),
-      color = "grey",
-      size = 3
-    ) + 
-    # Puntos extremos
+      data = filter(data, es_extremo != 1),
+      aes(color = periodo_origen, text = paste0(nombre_institucion, " (n=", n_estudiantes, ")")),
+      alpha = 0.3, size = 3
+    ) +
     geom_point(
-      data = filter(data_temp, es_extremo == 1),
-      aes(color = color, text = paste0(nombre_institucion, " (n=", n_estudiantes, ")")),
-      size = 3
-    ) + 
-    # Ejes
+      data = filter(data, es_extremo == 1),
+      aes(color = periodo_origen, text = paste0(nombre_institucion, " (n=", n_estudiantes, ")")),
+      alpha = 0.9, size = 3
+    ) +
+    
     geom_vline(xintercept = 0, linetype = "solid", color = "black") +
     geom_hline(yintercept = 0, linetype = "solid", color = "black") +
-    # Etiqueta origen
     annotate("text", x = 0, y = 0, label = "(0, 0)", hjust = -0.2, vjust = -0.5, size = 3) +
-    # Títulos y ejes
+    
     labs(
       title = "Valor Agregado\nLectura Crítica vs Razonamiento Cuantitativo",
       subtitle = paste0("CINE ", cine_valor),
       x = "Lectura Crítica",
       y = "Razonamiento Cuantitativo",
-      color = ""
+      color = "Periodo"
     ) +
-    scale_color_manual(values = c("Puntos Extremos" = "tomato")) +
+    scale_color_manual(values = colores_periodo) +
     xlim(-lim, lim) +
     ylim(-lim, lim) +
     theme_minimal() +
@@ -197,6 +194,8 @@ graficar_valor_agregado <- function(data, cine_valor) {
       legend.position = "top"
     )
 }
+
+
 
 
 
@@ -232,31 +231,58 @@ resultados_va <- bind_rows(resultados_va_list, .id = "origen_archivo")
 # Interfaz de usuario
 ui <- fluidPage(
   titlePanel("Gráficos Interactivos por CINE"),
-  sidebarLayout(
-    sidebarPanel(
-      selectInput("periodo_input", "Selecciona el periodo:",
-                  choices = sort(unique(resultados_va$periodo))),
-      selectInput("cine_input", "Selecciona un CINE:", choices = NULL),
-      h4("Universidades en Q1 y Q3"),
-      dataTableOutput("universidades_q1q3")
+  
+  # Inputs en fila horizontal
+  fluidRow(
+    column(width = 4,
+           selectInput("periodo_input", "Selecciona un Periodo:", 
+                       choices = sort(unique(resultados_va$periodo)))
     ),
-    mainPanel(
-      plotlyOutput("grafico_interactivo", height = "700px")
+    column(width = 4,
+           selectInput("cine_input", "Selecciona un CINE:", choices = NULL)
+    ),
+    column(width = 4,
+           selectInput("periodo_comparar_input", "Periodo a comparar (opcional):", 
+                       choices = c("Ninguno" = "", sort(unique(resultados_va$periodo))))
+    )
+  ),
+  
+  # Tablas y gráfica
+  fluidRow(
+    column(width = 6,
+           fluidRow(
+             column(width = 6,
+                    uiOutput("titulo_tabla_principal"),
+                    dataTableOutput("universidades_q1q3")
+             ),
+             column(width = 6,
+                    conditionalPanel(
+                      condition = "input.periodo_comparar_input != ''",
+                      uiOutput("titulo_tabla_comparar"),
+                      dataTableOutput("universidades_q1q3_comparar")
+                    )
+             )
+           )
+    ),
+    column(width = 6,
+           plotlyOutput("grafico_interactivo", height = "700px")
     )
   )
 )
 
+
+
 # Lógica del servidor
 server <- function(input, output, session) {
   
-  # Data reactiva filtrada por periodo
+  # Data reactiva filtrada por periodo principal
   data_por_periodo <- reactive({
     req(input$periodo_input)
     resultados_va %>%
       filter(periodo == input$periodo_input)
   })
   
-  # Actualizar CINEs cuando cambia el periodo
+  # Actualizar CINEs disponibles según periodo principal
   observeEvent(input$periodo_input, {
     req(data_por_periodo())
     updateSelectInput(session, "cine_input",
@@ -264,42 +290,125 @@ server <- function(input, output, session) {
                       selected = character(0))
   })
   
-  # Filtrar datos finales por periodo y CINE
+  # Datos filtrados para tabla (solo del periodo principal)
   data_filtrada <- reactive({
     req(input$cine_input)
     marcar_extremos_por_cine(data_por_periodo(), input$cine_input)
   })
   
-  # Gráfico
+  # Gráfico interactivo con opción de comparación
   output$grafico_interactivo <- renderPlotly({
     req(input$cine_input)
-    p <- graficar_valor_agregado(data_por_periodo(), input$cine_input)
+    
+    # Data principal
+    df_principal <- marcar_extremos_por_cine(data_por_periodo(), input$cine_input) %>%
+      mutate(periodo_origen = input$periodo_input)
+    
+    # Data de comparación (si existe)
+    df_comparar <- NULL
+    if (!is.null(input$periodo_comparar_input) && input$periodo_comparar_input != "") {
+      df_comparar <- marcar_extremos_por_cine(
+        resultados_va %>% filter(periodo == input$periodo_comparar_input),
+        input$cine_input
+      ) %>%
+        mutate(periodo_origen = input$periodo_comparar_input)
+    }
+    
+    # Combinar datos
+    df_combined <- bind_rows(df_principal, df_comparar)
+    
+    # Graficar
+    p <- graficar_valor_agregado_comparacion(df_combined, input$cine_input)
+    
     ggplotly(p, tooltip = c("x", "y", "text")) %>%
       layout(title = list(
-        text = paste0("Valor Agregado<br><sub>Periodo: ", input$periodo_input, 
+        text = paste0("Valor Agregado<br><sub>Periodo(s): ",
+                      input$periodo_input,
+                      if (!is.null(input$periodo_comparar_input) && input$periodo_comparar_input != "") {
+                        paste0(" vs ", input$periodo_comparar_input)
+                      } else "", 
                       " | CINE: ", input$cine_input, "</sub>"),
         x = 0.5
       ))
   })
   
-  # Tabla de universidades en Q1 y Q3
+  # Tabla de universidades en Q1 y Q3 (solo periodo principal)
   output$universidades_q1q3 <- renderDataTable({
     data_filtrada() %>%
       filter(cuadrante %in% c("Q1", "Q3")) %>%
       mutate(magnitud = round(distancia_origen, 1)) %>%
       select(nombre_institucion, cuadrante, magnitud) %>%
       arrange(cuadrante, desc(magnitud)) %>%
-      datatable(options = list(pageLength = 10)) %>%
+      datatable(
+        options = list(
+          pageLength = 10,
+          columnDefs = list(
+            list(targets = 1, visible = FALSE)  # Oculta la columna 'cuadrante' (índice 1 empieza en 0)
+          )
+        )
+      ) %>%
       formatStyle(
         'cuadrante',
         target = 'row',
         backgroundColor = styleEqual(
           c("Q1", "Q3"),
-          c("palegreen", "khaki")
+          c("rgba(152, 251, 152, 0.3)",  # palegreen con alpha 0.3
+            "rgba(240, 230, 140, 0.3)")  # khaki con alpha 0.3
         )
       )
   })
+  
+  # Tabla de universidades en Q1 y Q3 (periodo de comparación)
+  output$universidades_q1q3_comparar <- renderDataTable({
+    req(input$periodo_comparar_input)
+    req(input$periodo_comparar_input != "")
+    req(input$cine_input)
+    
+    data_comparar <- marcar_extremos_por_cine(
+      resultados_va %>% filter(periodo == input$periodo_comparar_input),
+      input$cine_input
+    )
+    
+    data_comparar %>%
+      filter(cuadrante %in% c("Q1", "Q3")) %>%
+      mutate(magnitud = round(distancia_origen, 1)) %>%
+      select(nombre_institucion, cuadrante, magnitud) %>%
+      arrange(cuadrante, desc(magnitud)) %>%
+      datatable(
+        options = list(
+          pageLength = 10,
+          columnDefs = list(
+            list(targets = 1, visible = FALSE)  # Oculta la columna 'cuadrante'
+          )
+        )
+      ) %>%
+      formatStyle(
+        'cuadrante',
+        target = 'row',
+        backgroundColor = styleEqual(
+          c("Q1", "Q3"),
+          c("rgba(152, 251, 152, 0.3)",  # palegreen con alpha 0.3
+            "rgba(240, 230, 140, 0.3)")  # khaki con alpha 0.3
+        )
+      )
+  })
+  
+  
+  # Título dinámico para tabla principal
+  output$titulo_tabla_principal <- renderUI({
+    req(input$periodo_input)
+    h4(paste0("Universidades en Q1 y Q3 (Periodo: ", input$periodo_input, ")"))
+  })
+  
+  # Título dinámico para tabla de comparación
+  output$titulo_tabla_comparar <- renderUI({
+    req(input$periodo_comparar_input)
+    if (input$periodo_comparar_input == "") return(NULL)
+    h4(paste0("Universidades en Q1 y Q3 (Periodo: ", input$periodo_comparar_input, ")"))
+  })
+  
 }
+
 
 # Ejecutar la aplicación
 shinyApp(ui = ui, server = server)
