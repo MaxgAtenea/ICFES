@@ -20,6 +20,7 @@ lapply(c("readr",
          "lme4",
          "data.tree",
          "jsonlite",
+         "openxlsx",
          "purrr",
          "patchwork"),
        library,
@@ -69,8 +70,8 @@ resumen_nans <- function(df) {
 
 #' Resumen de inbcs y numero estudiantes por campo CINE
 #'
-#' Esta función agrupa los datos por un campo CINE (por defecto, el campo específico)
-#' y resume el número total de personas y la cantidad de icine distintos.
+#' Esta función agrupa los datos por un campo NBC
+#' y resume el número total de personas y la cantidad de inbc distintos.
 #'
 #' @param data Dataframe a analizar
 #' @param columna_nbc Nombre de la columna de agrupación NBC
@@ -79,10 +80,10 @@ observaciones_por_nbc <- function(data, columna_nbc, columna_inbc) {
   data %>%
     group_by(.data[[columna_nbc]]) %>%
     summarise(
-      inbc_distintos = n_distinct(.data[[columna_inbc]]),
+      conteo_inbc = n_distinct(.data[[columna_inbc]]),
       .groups = "drop"
     ) %>%
-    arrange(desc(inbc_distintos))
+    arrange(desc(conteo_inbc))
 }
 
 
@@ -172,8 +173,9 @@ conteos <- full_join(
 conteos <- conteos %>%
   mutate(
     across(where(is.numeric), ~replace_na(., 0)),
-    diferencia = inbc_distintos_propio - inbc_distintos_icfes
+    diferencia = conteo_inbc_propio - conteo_inbc_icfes
     )
+
 
 ##########################################
 #4 Ranking IES por cada NBC
@@ -217,7 +219,7 @@ p2 <-ggplot(va_merged_sin_na, aes(x = diferencia_ranking_lc)) +
     y = "Frecuencia"
   )
 
-p1 / p2 
+p1 + p2 
 ##########################################
 #5 correlacion entre los resultados del icfes y resultados propios
 ##########################################
@@ -226,12 +228,12 @@ p1 / p2
 plot_correlation <- function(df, xvar, yvar) {
   # Calcular correlación y pendiente
   modelo <- lm(df[[yvar]] ~ df[[xvar]])
-  pendiente <- coef(modelo)[2] %>% round(2)
+  #pendiente <- coef(modelo)[2] %>% round(2)
   cor_val <- cor(df[[xvar]], df[[yvar]], use = "complete.obs") %>% round(2)
   
   # Etiqueta que muestra correlación y pendiente
-  etiqueta <- paste0("Cor = ", cor_val, "\nPendiente = ", pendiente)
-  
+  #etiqueta <- paste0("Cor = ", cor_val, "\nPendiente = ", pendiente)
+  etiqueta <- paste0("Cor = ", cor_val)
   # Gráfico
   ggplot(df, aes(x = .data[[xvar]], y = .data[[yvar]])) +
     geom_point(alpha = 0.6) +
@@ -240,9 +242,9 @@ plot_correlation <- function(df, xvar, yvar) {
              hjust = 1.1, vjust = -0.5, size = 5, color = "red") +
     theme_minimal() +
     labs(
-      title = paste("Scatter plot", xvar, "vs", yvar),
-      x = xvar,
-      y = yvar
+      title = "Valor Agregado Razonamiento Cuantitativo",
+      x = "VA Propio",
+      y = "VA ICFES"
     )
 }
 
@@ -251,5 +253,5 @@ p1 <- plot_correlation(va_merged_sin_na, "coeficiente_LC", "va_lectura_critica")
 p2 <- plot_correlation(va_merged_sin_na, "coeficiente_RC", "va_razona_cuantitat")
 
 # Mostrar juntos
-grid.arrange(p1, p2, ncol = 1)
+grid.arrange(p2, p1, ncol = 1)
 
