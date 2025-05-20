@@ -1,6 +1,3 @@
-
-
-
 #La informacion del saber tyt proviene de dataicfes
 #la informacion de los programas de tyt proviene de https://hecaa.mineducacion.gov.co/consultaspublicas/programas
 
@@ -130,11 +127,12 @@ resumir_por_cine <- function(df, cine, icine, nivel_filtrado = NULL) {
 
 resumir_por_programa <- function(df) {
   df %>%
-    group_by(across(all_of(c("estu_snies_prgmacademico", "nombre_del_programa")))) %>%
+    group_by(across(all_of(c("estu_snies_prgmacademico", "nombre_del_programa", "nivel_de_formacion")))) %>%
     summarise(
       n_estudiantes = n(),
       promedio_punt_sabertyt = mean(punt_global, na.rm = TRUE),
       nombre_institucion = first(nombre_institucion),
+      periodo = first(año),
       .groups = "drop"
     )
 }
@@ -233,15 +231,15 @@ for (año in años) {
 
 
 ##################################
-# Para cada programa calculamos: 
+# Para cada **programa** calculamos: 
 # promedio saber tyt
 # numero estudiantes
 ##################################
 
 for (año in años){
-  data_temp <- data %>% filter(año_presentacion == año)
+  data_temp <- data %>% filter(año_presentacion == año) 
   promedios_programa <- resumir_por_programa(data_temp)
-  write_csv(promedios_programa, file = paste0("data/Promedios/promedios_programa_tecnico_", año, ".csv"))
+  write_csv(promedios_programa, file = paste0("data/Promedios/promedios_programa_", año, ".csv"))
 }
 
 
