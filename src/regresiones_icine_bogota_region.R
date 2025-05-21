@@ -232,46 +232,70 @@ calcular_sd_condicional <- function(modelos, var_dependiente) {
 #' Esta función toma la base consolidada del icfes junto con la informacion de los programas
 #' y realiza los filtros que el icfes hace en su metodología del VA:
 #' 
-#' - El puntaje global del Saber Pro debe ser distinto de cero.
-#' - Se selecciona solo el primer resultado del Saber Pro por estudiante.
-#' - Se considera una ventana temporal válida entre la presentación del Saber 11 y Saber Pro:
+#' - Excluir estudiantes con dos o más módulos con puntaje 0 o sin calificación
+#' - Se considera una ventana temporal entre la presentación del Saber 11 y Saber Pro:
 #'     - Para Medicina: entre 40 y 90 periodos de diferencia.
 #'     - Para otros programas: entre 40 y 80 periodos.
 #' - Se requiere un mínimo de 25 estudiantes por categoría `icine`.
-#' - Se conservan solo los campos específicos (`cine_f_2013_ac_campo_especific`) 
-#'   con presencia en al menos 5 instituciones distintas.
+#' - Se conservan solo los campos específicos (`cine_col`)con presencia en al menos 5 instituciones distintas.
+#' - Se seleccionan INBC tales que los estudiantes cruzados deben representar mínimo el 40% de la población total de la IES en ese NBC
 #'
 #' @param data Un data frame con los datos completos.
 #' @param tipo_cine_col Nivel CINE que se está considerando
-#' @param año (Opcional) Año específico de presentación del Saber Pro a filtrar. Si es NULL, no se aplica este filtro.
+#' @param anio Año(s) de presentación del Saber Pro a filtrar.
 #' @return Un data frame filtrado según los criterios establecidos.
-filtros_icfes <- function(data, nivel_cine, anios = NULL) {
-  temp_icine <-  nivel_agregacion[[nivel_cine]]$icine_col
-  temp_cine <-  nivel_agregacion[[nivel_cine]]$cine_col
-  data_filtrada <- data %>%
-    # Filtrar por uno o varios años, si se especifican
-    { if (!is.null(anios)) filter(., anio_presentacion_sbpro %in% anios) else . } %>%
-    
-    # Filtros fijos
-    filter(
-      punt_global_bdsaberpro != 0,
-      (
-        (cine_f_2013_ac_campo_detallado == "Medicina" & dif_periodos >= 40 & dif_periodos <= 90) |
-          (cine_f_2013_ac_campo_detallado != "Medicina" & dif_periodos >= 40 & dif_periodos <= 80)
-      )
-    ) %>%
-    
-    # Quedarse con el primer Saber Pro por estudiante
+filtros_icfes <- function(data, nivel_cine, anios) {
+  temp_icine <- nivel_agregacion[[nivel_cine]]$icine_col
+  temp_cine <- nivel_agregacion[[nivel_cine]]$cine_col
+  
+  # 1. identificar estudiantes con dos o más módulos con puntaje 0 o sin calificación
+  estudiantes_excluir <- data %>%
     group_by(estu_consecutivo_bdsaberpro) %>%
-    slice_min(order_by = periodo_bdsaberpro, n = 1, with_ties = FALSE) %>%
-    ungroup() %>%
+    summarize(modulos_invalidos = sum(is.na(punt_global_bdsaberpro) | punt_global_bdsaberpro == 0, na.rm = TRUE)) %>%
+    filter(modulos_invalidos >= 2) %>%
+    pull(estu_consecutivo_bdsaberpro)
+  
+  #Con este filtro, implicitamente se toman todos los individuos para los cuales cruza saber 11 y saber pro
+  #esto pues dif_periodos es na si no cruzaron
+  
+  data_filtrada <- data %>%
+    # 2. Filtrar por año(s)
+    filter(anio_presentacion_sbpro %in% anios) %>%
     
-    # Filtro por mínimo 25 estudiantes por ICINE
+    # 3. excluir estudiantes con dos o más módulos con puntaje 0 o sin calificación
+    filter(!(estu_consecutivo_bdsaberpro %in% estudiantes_excluir)) %>%
+    
+    # 4. Filtro por diferencia de periodos (tiempo entre Saber 11 y Pro)
+    filter(
+      (cine_f_2013_ac_campo_detallado == "Medicina" & dif_periodos >= 40 & dif_periodos <= 90) |
+        (cine_f_2013_ac_campo_detallado != "Medicina" & dif_periodos >= 40 & dif_periodos <= 80)
+    )
+  
+  # 5. Calcular % de estudiantes con tanto con prueba saber 11 y prueba saber pro
+  num_estudiantes_inbc <- data %>%
+    group_by(inbc) %>%
+    summarize(
+      total_estudiantes = n(),
+      num_estudiantes_con_ambos_ids = sum(!is.na(estu_consecutivo_bdsaber11) & !is.na(estu_consecutivo_bdsaberpro)),
+      prop_estudiantes_cruzados = num_estudiantes_con_ambos_ids / total_estudiantes,
+      cumple_40_por_ciento = prop_estudiantes_cruzados >= 0.40,
+      .groups = "drop"
+    )
+  
+  # 6. Identificar solo INBC tales que: Los estudiantes cruzados deben representar mínimo el 40% de la población total de la IES en ese NBC
+  inbc_permitidos <- num_estudiantes_inbc %>%
+    filter(cumple_40_por_ciento) %>%
+    pull(inbc)
+  
+  # filtrar por quellos INBC
+  data_filtrada <- data_filtrada %>%
+    filter(inbc %in% inbc_permitidos)
+  
+  # 7. Filtros por número mínimo de estudiantes e instituciones
+  data_filtrada %>%
     group_by(!!sym(temp_icine)) %>%
     filter(n() >= 25) %>%
     ungroup() %>%
-    
-    # Filtro por mínimo 5 instituciones por nivel_cine
     group_by(!!sym(temp_cine)) %>%
     filter(n_distinct(codigo_institucion) >= 5) %>%
     ungroup()
