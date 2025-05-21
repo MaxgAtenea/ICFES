@@ -310,9 +310,6 @@ municipios <- read_delim("data/Municipios_cleaned/municipios.csv", escape_double
 #Saber pro y saber 11
 
 #Leer la base consolidada del Saber Pro cruzado con Saber 11
-#A nivel de Bogota
-#icfes <- read_delim("data/BD/icfes_bd.csv", escape_double = FALSE, trim_ws = TRUE)
-#icfes <- read_delim("data/BD/icfes_bogota_region.csv", escape_double = FALSE, trim_ws = TRUE)
 icfes <- read_delim("data/BD/saber11_nacional_saberpro_bogota_region.csv", escape_double = FALSE, trim_ws = TRUE)
 
 #Limpiar la columna estu_nucleo_pregrado y actualizarla en el dataframe

@@ -15,6 +15,10 @@
 #Archivo csv: "Estudiantes matriculados 2023.csv"
 #NOTA: El archivo viene sin duplicados de los codigos SNIES
 ############################################################
+##################################
+#Set working directory
+##################################
+setwd("/home/alejandro/Documentos/ATENEA/Despacho/ICFES")
 
 ##################################
 #Instalar librerias
@@ -194,10 +198,6 @@ graficar_valor_agregado_comparacion <- function(data, cine_valor) {
       legend.position = "top"
     )
 }
-
-
-
-
 
 ##########################################
 # LECTURA DATOS
