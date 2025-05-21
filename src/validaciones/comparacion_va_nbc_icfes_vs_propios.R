@@ -123,6 +123,17 @@ va_icfes <- va_icfes %>%
   mutate(nbc = if_else(nbc == "Arquitectura", "Arquitectura Y Afines", nbc))
 
 ##########################################
+# Identificar grupos NBC donde las estimaciones
+# arrojaron boundary (singular) fit
+##########################################
+va_propio <- va_propio %>%
+  group_by(nucleo_basico_del_conocimiento) %>%
+  mutate(
+    is_singular_lc = all(coeficiente_LC == 0),
+    is_singular_rc = all(coeficiente_RC == 0)
+  ) %>%
+  ungroup()
+##########################################
 #2. UNIR DFs
 ##########################################
 
@@ -176,23 +187,48 @@ conteos <- conteos %>%
     diferencia = conteo_inbc_propio - conteo_inbc_icfes
     )
 
+conteos <- conteos %>%
+  filter(nbc != "Sin Clasificar")
 
 ##########################################
-#4 Ranking IES por cada NBC
+#4 Ranking IES por cada NBC donde 
+# la estimacino no fue singular
 ##########################################
 attach(va_merged_sin_na)
 
 va_merged_sin_na <- va_merged_sin_na %>%
+  mutate(id_fila = row_number())
+
+
+#ranking razonamiento cuantitativo
+rank_rc <- va_merged_sin_na %>%
+  filter(is_singular_rc == FALSE) %>%
   group_by(nbc) %>%
   mutate(
     ranking_coeficiente_rc = percent_rank(desc(coeficiente_RC)),
-    ranking_coeficiente_lc = percent_rank(desc(coeficiente_LC)),
-    ranking_va_lectura_critica = percent_rank(desc(va_lectura_critica)),
     ranking_va_razona_cuantitat = percent_rank(desc(va_razona_cuantitat))
   ) %>%
-  ungroup()
+  ungroup() %>%
+  select(id_fila, ranking_coeficiente_rc, ranking_va_razona_cuantitat)
 
+#ranking lectura critica
+rank_lc <- va_merged_sin_na %>%
+  filter(is_singular_lc == FALSE) %>%
+  group_by(nbc) %>%
+  mutate(
+    ranking_coeficiente_lc = percent_rank(desc(coeficiente_LC)),
+    ranking_va_lectura_critica = percent_rank(desc(va_lectura_critica))
+  ) %>%
+  ungroup() %>%
+  select(id_fila, ranking_coeficiente_lc, ranking_va_lectura_critica)
 
+#unir los rankings de nuevo al dataframe
+va_merged_sin_na <- va_merged_sin_na %>%
+  left_join(rank_rc, by = "id_fila") %>%
+  left_join(rank_lc, by = "id_fila") %>%
+  select(-id_fila)  # Limpieza final
+
+#calcular diferencia de percentiles para lectura critica y razonamiento cuant.
 va_merged_sin_na <- va_merged_sin_na %>%
   mutate(
     diferencia_ranking_rc = ranking_va_razona_cuantitat - ranking_coeficiente_rc,
@@ -201,31 +237,39 @@ va_merged_sin_na <- va_merged_sin_na %>%
 
 # Histograma para diferencia_ranking_rc
 p1 <- ggplot(va_merged_sin_na, aes(x = diferencia_ranking_rc)) +
-  geom_histogram(fill = "darkblue", color = "white") +
+  geom_histogram(aes(y = after_stat(count / sum(count))), 
+                 fill = "darkblue", color = "white") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_x_continuous(breaks = seq(-1, 1, by = 0.1)) +
   theme_minimal() +
   labs(
-    title = "Diferencia Ranking VA-RC ",
+    title = "Diferencia Ranking VA-RC",
     x = "Diferencia de Ranking RC",
-    y = "Frecuencia"
+    y = "Porcentaje"
   )
 
+
 # Histograma para diferencia_ranking_lc
-p2 <-ggplot(va_merged_sin_na, aes(x = diferencia_ranking_lc)) +
-  geom_histogram(fill = "darkblue", color = "white") +
+p2 <- ggplot(va_merged_sin_na, aes(x = diferencia_ranking_lc)) +
+  geom_histogram(aes(y = after_stat(count / sum(count))), 
+                 fill = "darkblue", color = "white") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_x_continuous(breaks = seq(-1, 1, by = 0.1)) +
   theme_minimal() +
   labs(
     title = "Diferencia Ranking VA-LC ",
     x = "Diferencia de Ranking LC",
-    y = "Frecuencia"
+    y = "Porcentaje"
   )
 
-p1 + p2 
+
+p1/p2
 ##########################################
 #5 correlacion entre los resultados del icfes y resultados propios
 ##########################################
 
 # Función con tidy eval para graficar scatter con correlación
-plot_correlation <- function(df, xvar, yvar) {
+plot_correlation <- function(df, xvar, yvar, titulo) {
   # Calcular correlación y pendiente
   modelo <- lm(df[[yvar]] ~ df[[xvar]])
   #pendiente <- coef(modelo)[2] %>% round(2)
@@ -242,15 +286,18 @@ plot_correlation <- function(df, xvar, yvar) {
              hjust = 1.1, vjust = -0.5, size = 5, color = "red") +
     theme_minimal() +
     labs(
-      title = "Valor Agregado Razonamiento Cuantitativo",
+      title = titulo,
       x = "VA Propio",
       y = "VA ICFES"
+    ) +
+    theme(
+      plot.title = element_text(hjust = 0.5)  # <- centra el título
     )
 }
 
 # Crear gráficos
-p1 <- plot_correlation(va_merged_sin_na, "coeficiente_LC", "va_lectura_critica")
-p2 <- plot_correlation(va_merged_sin_na, "coeficiente_RC", "va_razona_cuantitat")
+p1 <- plot_correlation(va_merged_sin_na, "coeficiente_LC", "va_lectura_critica", "Comparación de estimaciones del Valor Agregado\nLectura Crítica")
+p2 <- plot_correlation(va_merged_sin_na, "coeficiente_RC", "va_razona_cuantitat", "Comparación de estimaciones del Valor Agregado\nRazonamiento Cuantitativo")
 
 # Mostrar juntos
 grid.arrange(p2, p1, ncol = 1)

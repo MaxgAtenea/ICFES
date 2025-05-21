@@ -531,6 +531,9 @@ generar_valores_agregados <- function(data_filtrado, tipo_cine , anios = NULL) {
 #A nivel Bogota-Region
 data <- read_delim("data/BD/icfes_cine_programas_vigencia_2021_2022.csv", escape_double = FALSE, trim_ws = TRUE)
 
+#filtrar para bogota toda vez que los resultados que nos compartio el icfes fue a nivel bogota
+data <- data %>% filter(municipio_oferta_programa == "bogota_dc")
+
 #Seleccionar las columnas de interes
 data <- data %>%
   select(all_of(columnas_regresion))
