@@ -631,8 +631,13 @@ periodos <- list(
   `2016_2017` = c(2016, 2017)
 )
 
+periodos <- list(
+  `2022_2023` = c(2022, 2023)
+)
+
 # Definir tipos de cine a iterar
 niveles_cine <- c("cine_amplio", "cine_especifico", "cine_detallado", "nbc")
+niveles_cine <- c("cine_especifico")
 
 guardar_valores_agregados <- function(data, periodos, niveles_cine) {
   for (nombre_periodo in names(periodos)) {
@@ -695,26 +700,61 @@ write.xlsx(conteo_presentacion_saber11_2022, "conteo_presentacion_saber11_2022.x
 write.xlsx(conteo_presentacion_saber11_2023, "conteo_presentacion_saber11_2023.xlsx")
 
 ##########################################
-# Tabla 4 del Anexo del ICFES
+# Grupos distintos
 ##########################################
-#### conteo de instituciones y CINES y instituciones-programas ####
-conteo_programas_snies_filtrados <- data_filtrado %>%  
-  group_by(codigo_institucion,estu_snies_prgmacademico) %>%
-  summarise(
-    n_obs = n()
-  )
 
-conteo_programas_snies <- data %>%  filter(anio_presentacion_sbpro %in% c(2022,2023)) %>% 
-  group_by(codigo_institucion,estu_snies_prgmacademico) %>%
-  summarise(
-    n_obs = n()
-  )
+#data total
+# Número de campos específicos CINE F 2013 distintos
+data %>% filter(anio_presentacion_sbpro %in% c(2022,2023)) %>% distinct(cine_f_2013_ac_campo_especific) %>% nrow()
+#instituciones distintas
+data %>% filter(anio_presentacion_sbpro %in% c(2022,2023)) %>% distinct(codigo_institucion) %>% nrow()
+# Número  de ICINE distintos
+data %>% filter(anio_presentacion_sbpro %in% c(2022,2023)) %>% distinct(icine) %>% nrow()
+# Número de pares únicos (codigo_institucion, estu_snies_prgmacademico)
+data %>%  filter(anio_presentacion_sbpro %in% c(2022,2023)) %>%distinct(codigo_institucion, estu_snies_prgmacademico) %>% nrow()
+
+#data filtrado
+# Número de campos específicos CINE F 2013 distintos
+data_filtrado %>% filter(anio_presentacion_sbpro %in% c(2022,2023)) %>% distinct(cine_f_2013_ac_campo_especific) %>% nrow()
+#instituciones distintas
+data_filtrado %>% filter(anio_presentacion_sbpro %in% c(2022,2023)) %>% distinct(codigo_institucion) %>% nrow()
+# Número de ICINE distintos
+data_filtrado %>% filter(anio_presentacion_sbpro %in% c(2022,2023)) %>% distinct(icine) %>% nrow()
+# Número de pares únicos (codigo_institucion, estu_snies_prgmacademico)
+data_filtrado %>% filter(anio_presentacion_sbpro %in% c(2022,2023)) %>% distinct(codigo_institucion, estu_snies_prgmacademico) %>% nrow()
+
+##########################################
+# IES y programas por municipios
+##########################################
+data_filtrado %>%
+  filter(anio_presentacion_sbpro %in% c(2022,2023)) %>% 
+  group_by(municipio_oferta_programa) %>%
+  summarise(n_programas = n_distinct(estu_snies_prgmacademico)) %>% 
+  arrange(municipio_oferta_programa)
+  
+data %>%
+  filter(anio_presentacion_sbpro %in% c(2022,2023)) %>% 
+  group_by(municipio_oferta_programa) %>%
+  summarise(n_programas = n_distinct(estu_snies_prgmacademico)) %>% 
+  arrange(municipio_oferta_programa)
+  
+data_filtrado %>%
+  filter(anio_presentacion_sbpro %in% c(2022,2023)) %>% 
+  group_by(municipio_oferta_programa) %>%
+  summarise(n_ies = n_distinct(codigo_institucion)) %>%
+  arrange(municipio_oferta_programa)
+
+data %>%
+  filter(anio_presentacion_sbpro %in% c(2022,2023)) %>% 
+  group_by(municipio_oferta_programa) %>%
+  summarise(n_ies = n_distinct(codigo_institucion)) %>%
+  arrange(municipio_oferta_programa)
 
 
 ##########################################
 # Tabla 6 del Anexo del ICFES
 ##########################################
-#### configuración estudiante por NBC ####
+#### configuración estudiantes por CINE ####
 
 conteo_estudiantes_por_cine <- data %>% 
   filter(anio_presentacion_sbpro %in% c(2022,2023)) %>% 
@@ -724,19 +764,20 @@ conteo_estudiantes_por_cine <- data %>%
   ) %>% 
   arrange(cine_f_2013_ac_campo_especific)
 
-write.xlsx(conteo_estudiantes_por_cine_filtrados, "conteo_estudiantes_por_cine_filtrados.xlsx")
-
 conteo_estudiantes_por_cine_filtrados <- data_filtrado %>%  
+  filter(anio_presentacion_sbpro %in% c(2022,2023)) %>%
   group_by(cine_f_2013_ac_campo_especific) %>%
   summarise(
     n_obs = n()
   ) %>% 
   arrange(cine_f_2013_ac_campo_especific)
 
-write.xlsx(conteo_estudiantes_por_cine, "conteo_estudiantes_por_cine.xlsx")
-write.xlsx(conteo_estudiantes_por_cine_filtrados, "conteo_estudiantes_por_cine_filtrados.xlsx")
+conteo_estudiantes <- conteo_estudiantes_por_cine %>%
+  left_join(conteo_estudiantes_por_cine_filtrados, by = "cine_f_2013_ac_campo_especific", suffix = c("_total","_filtrado")) %>% 
+  mutate (percent = n_obs_filtrado/n_obs_total)
 
-  
+write.xlsx(conteo_estudiantes, "conteo_estudiantes_por_cine.xlsx")
+
 ##########################################
 # Tabla Adicional - Numero IES por municipio
 ##########################################

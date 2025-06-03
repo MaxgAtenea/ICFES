@@ -125,11 +125,12 @@ resumir_por_cine <- function(df, cine, icine, nivel_filtrado = NULL) {
     )
 }
 
-resumir_por_programa <- function(df) {
+resumir_por_programa <- function(df, periodo_objetivo) {
   df %>%
     group_by(across(all_of(c("estu_snies_prgmacademico", "nombre_del_programa", "nivel_de_formacion")))) %>%
     summarise(
       n_estudiantes = n(),
+      n_estudiantes_matriculados = sum(periodo == periodo_objetivo, na.rm = TRUE),
       promedio_punt_sabertyt = mean(punt_global, na.rm = TRUE),
       nombre_institucion = first(nombre_institucion),
       periodo = first(año),
@@ -234,12 +235,13 @@ for (año in años) {
 # Para cada **programa** calculamos: 
 # promedio saber tyt
 # numero estudiantes
+#numero estudiantes matriculados
 ##################################
-
+años <- c(2023)
 for (año in años){
   data_temp <- data %>% filter(año_presentacion == año) 
-  promedios_programa <- resumir_por_programa(data_temp)
-  write_csv(promedios_programa, file = paste0("data/Promedios/promedios_programa_", año, ".csv"))
+  promedios_programa <- resumir_por_programa(data_temp,20231)
+  write_csv(promedios_programa, file = paste0("data/Promedios/TYT/Desglosado por años/2023/promedios_programa_tyt_", año, ".csv"))
 }
 
 
