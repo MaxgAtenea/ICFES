@@ -5,3 +5,4 @@ output/
 .RData
 .Rhistory
 ICFES.Rproj
+.ipynb_checkpoints
