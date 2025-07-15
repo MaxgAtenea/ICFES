@@ -5,7 +5,7 @@
 
 #Fuentes de los datos
 
-#1.bd.csv: Base elaborada manualmente con la informacion de data icfes.  
+#1.bd.csv: Base elaborada manualmente con la informacion de data icfes. 
 
 #2. programas_bogota_nbc_cine.xlsx: https://hecaa.mineducacion.gov.co/consultaspublicas/programas
 #NOTA: Es un listado con los codigos CINE F2013, NBC, SNIES de cada programa.
@@ -50,7 +50,10 @@ library(stringr)#facilitar la manipulacion de caracteres
 library(plotly) #para graficas dinamicas
 library(lme4)#para la regresion de mixed models
 library(fuzzyjoin)
+library(reticulate)
+
 ##############################################
+#install.packages("reticulate")
 #Correr este bloque antes de cargar library(gt)
 #install.packages("gt")
 #install.packages("webshot2")  # better than webshot, works well
@@ -551,5 +554,5 @@ data_summary <- resumen_nans(data)
 #2.Nombres y codigos cine de programas universitarios de pregrado activos en bogota
 #3.Variable ICINE (analogo al INBC)
 
-write_csv(data, "data/BD/icfes_cine.csv")
+write_csv(data, "data/BD/icfes_cine_15072025.csv")
 

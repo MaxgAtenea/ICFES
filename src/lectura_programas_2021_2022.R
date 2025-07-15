@@ -513,7 +513,7 @@ base_cine$nombre_del_programa <- base_cine$nombre_del_programa %>%
   stri_trans_general("latin-ascii") %>%      # Eliminar tildes
   str_to_title() 
 
-write_csv(base_cine, "data/SNIES_CINE_cleaned/base_cine_programas_vigencia_2021_2022.csv")
+write_csv(base_cine, "data/SNIES_CINE_cleaned/base_cine_programas_vigencia_2021_2022_15072025.csv")
 
 
 #Filtrar por los programas que:
@@ -583,5 +583,5 @@ data_summary <- resumen_nans(data)
 #2.Nombres y codigos cine de programas universitarios de pregrado activos en bogota
 #3.Variable ICINE (analogo al INBC)
 
-write_csv(data, "data/BD/icfes_cine_programas_vigencia_2021_2022.csv")
+write_csv(data, "data/BD/icfes_cine_programas_vigencia_2021_2022_15072025.csv")
 
