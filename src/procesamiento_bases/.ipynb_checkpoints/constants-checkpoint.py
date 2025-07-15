@@ -57,11 +57,32 @@ cols_sb11before_20142 = [
     "cole_cod_depto_ubicacion", #Código Dane del departamento de la Sede
     "cole_cod_mcpio_ubicacion", #Código Dane del municipios de la Sede
     "cole_depto_ubicacion",
+    "cole_naturaleza",
     "recaf_punt_sociales_ciudadanas",
     "recaf_punt_ingles",
     "recaf_punt_lectura_critica",
     "recaf_punt_matematicas",
-    "recaf_punt_c_naturales"
+    "recaf_punt_c_naturales",
+    "cole_mcpio_ubicacion",
+    "cole_cod_dane_establecimiento",
+    "cole_cod_dane_sede",
+    "cole_codigo_icfes",
+    "cole_nombre_establecimiento",
+    "cole_nombre_sede",
+    "cole_sede_principal",
+    "estu_inse_individual",#
+    "estu_nse_individual",
+    "estu_nse_establecimiento",
+    "fami_estratovivienda",
+    "fami_personashogar",
+    "fami_cuartoshogar",
+    "fami_educacionmadre",
+    "fami_educacionpadre",
+    "estu_horassemanatrabaja",
+    "estu_genero",
+    "estu_etnia",
+    "estu_discapacidad",
+    "estu_dedicacionlecturadiaria"
 ]
 
 
@@ -72,6 +93,7 @@ cols_sb11after_20142 = [
     "cole_cod_depto_ubicacion", #Código Dane del departamento de la Sede
     "cole_cod_mcpio_ubicacion", #Código Dane del municipios de la Sede
     "cole_depto_ubicacion",
+    "cole_naturaleza",
     "punt_sociales_ciudadanas",
     "punt_ingles",
     "punt_lectura_critica",
@@ -82,19 +104,39 @@ cols_sb11after_20142 = [
     "percentil_lectura_critica",
     "percentil_matematicas",
     "percentil_sociales_ciudadanas",
-    "percentil_global"
+    "percentil_global",
+    "cole_mcpio_ubicacion",
+    "cole_cod_dane_establecimiento",
+    "cole_cod_dane_sede",
+    "cole_codigo_icfes",
+    "cole_nombre_establecimiento",
+    "cole_nombre_sede",
+    "cole_sede_principal",
+    "estu_inse_individual",#
+    "estu_nse_individual",
+    "estu_nse_establecimiento",
+    "fami_estratovivienda",
+    "fami_personashogar",
+    "fami_cuartoshogar",
+    "fami_educacionmadre",
+    "fami_educacionpadre",
+    "estu_horassemanatrabaja",
+    "estu_genero",
+    "estu_etnia",
+    "estu_discapacidad",
+    "estu_dedicacionlecturadiaria"
 ]
 
 cols_sb11 = [
-    "estu_consecutivo",
+    "estu_consecutivo", #variables identificadoras
     "llave_saber_11",
     "llave_saber_pro",
     "periodo",
     "punt_global",
-    "cole_cod_depto_ubicacion",
+    "cole_cod_depto_ubicacion", #variables de localizacion
     "cole_cod_mcpio_ubicacion",
     "cole_depto_ubicacion",
-    "recaf_punt_sociales_ciudadanas",
+    "recaf_punt_sociales_ciudadanas", #variables de puntaje
     "recaf_punt_ingles",
     "recaf_punt_lectura_critica",
     "recaf_punt_matematicas",
@@ -109,7 +151,28 @@ cols_sb11 = [
     "percentil_lectura_critica",
     "percentil_matematicas",
     "percentil_sociales_ciudadanas",
-    "percentil_global"
+    "percentil_global",
+    "cole_naturaleza", #variables del colegio
+    "cole_mcpio_ubicacion",
+    "cole_cod_dane_establecimiento",
+    "cole_cod_dane_sede",
+    "cole_codigo_icfes",
+    "cole_nombre_establecimiento",
+    "cole_nombre_sede",
+    "cole_sede_principal",
+    "estu_inse_individual",# variables socioeconomcias
+    "estu_nse_individual",
+    "estu_nse_establecimiento", 
+    "fami_estratovivienda",
+    "fami_personashogar",
+    "fami_cuartoshogar",
+    "fami_educacionmadre",
+    "fami_educacionpadre",
+    "estu_horassemanatrabaja",
+    "estu_genero",
+    "estu_etnia",
+    "estu_discapacidad",
+    "estu_dedicacionlecturadiaria"
 ]
 
 dtype_mapping_saber11 = {
@@ -129,7 +192,28 @@ dtype_mapping_saber11 = {
     "punt_ingles": "Int64",
     "punt_lectura_critica": "Int64",
     "punt_matematicas": "Int64",
-    "punt_c_naturales": "Int64"
+    "punt_c_naturales": "Int64",
+    "cole_naturaleza": "str",
+    "cole_mcpio_ubicacion": "str",
+    "cole_cod_dane_establecimiento": "Int64",
+    "cole_cod_dane_sede": "Int64",
+    "cole_codigo_icfes": "Int64",
+    "cole_nombre_establecimiento": "str",
+    "cole_nombre_sede": "str",
+    "cole_sede_principal": "str",
+    "estu_inse_individual": "float",#
+    "estu_nse_individual": "str",
+    "estu_nse_establecimiento": "float",
+    "fami_estratovivienda": "str",
+    "fami_personashogar": "str",
+    "fami_cuartoshogar": "str" ,
+    "fami_educacionmadre": "str",
+    "fami_educacionpadre": "str",
+    "estu_horassemanatrabaja" :"str",
+    "estu_genero": "str",
+    "estu_etnia": "str",
+    "estu_discapacidad": "str",
+    "estu_dedicacionlecturadiaria" : "str,
 }
 
 dtype_mapping_saberpro = {
