@@ -53,7 +53,8 @@ lapply(c("readr",
          "lme4",
          "data.tree",
          "jsonlite",
-         "purrr"),
+         "purrr",
+         "writexl"),
        library,
        character.only = TRUE
        )
@@ -724,10 +725,11 @@ guardar_valores_agregados <- function(data, periodos, niveles_cine) {
       dir.create(ruta_directorio, recursive = TRUE, showWarnings = FALSE)
       
       # Ruta del archivo
-      ruta_csv <- file.path(ruta_directorio, paste0("va_", nivel_cine, "_", nombre_periodo, "_run15072025" , ".csv"))
-      
+      #ruta_csv <- file.path(ruta_directorio, paste0("va_", nivel_cine, "_", nombre_periodo, "_run15072025" , ".csv"))
+      ruta_xlsx <- file.path(ruta_directorio, paste0("va_", nivel_cine, "_", nombre_periodo, "_run15072025" , ".xlsx"))
       # Guardar el resultado
-      write_csv(va_resultado, ruta_csv)
+      #write_csv(va_resultado, ruta_csv)
+      write.xlsx(va_resultado, file = ruta_xlsx)
     }
   }
 }
