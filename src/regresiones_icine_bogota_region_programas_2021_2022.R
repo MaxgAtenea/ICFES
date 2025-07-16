@@ -226,6 +226,47 @@ calcular_sd_condicional <- function(modelos, var_dependiente) {
   return(desvios_df)
 }
 
+#' Calcular efectos aleatorios y sus intervalos de confianza
+#'
+#' Esta función extrae los efectos aleatorios predichos por grupo (`icine`)
+#' junto con sus errores estándar condicionales e intervalos de confianza al 95%.
+#'
+#' @param modelos Una lista de modelos lmer (por ejemplo, generada con `map()`).
+#' @param var_dependiente Nombre de la variable dependiente (string) para construir dinámicamente los nombres de columnas.
+#'
+#' @return Un dataframe con: icine, cine, efecto aleatorio, error estándar e intervalos inferior/superior.
+calcular_IC_efectos_aleatorios <- function(modelos, var_dependiente) {
+  map2_dfr(
+    modelos, names(modelos),
+    function(modelo, cine_nombre) {
+      var_comps <- as.data.frame(VarCorr(modelo))
+      if (nrow(var_comps) == 0) return(NULL)
+      
+      re <- ranef(modelo, condVar = TRUE)
+      if (!("postVar" %in% names(attributes(re[[1]])))) return(NULL)
+      
+      post_var <- attr(re[[1]], "postVar")
+      if (length(post_var) == 0) return(NULL)
+      
+      icine_names <- rownames(re[[1]])
+      efectos <- re[[1]][, 1]
+      sds <- sqrt(as.numeric(post_var[1, 1, ]))
+      
+      data.frame(
+        icine = icine_names,
+        cine = cine_nombre,
+        efecto = efectos,
+        sd = sds,
+        ic_inf = efectos - 1.96 * sds,
+        ic_sup = efectos + 1.96 * sds
+      ) %>%
+        rename_with(~ paste0(., "_", var_dependiente), .cols = c("efecto", "sd", "ic_inf", "ic_sup"))
+    }
+  )
+}
+
+
+
 
 #' Filtrar y depurar datos según criterios del ICFES
 #'
@@ -425,11 +466,12 @@ ajustar_efectos_mixtos_por_cine <- function(
   coefs_df <- coefs_df %>%
     left_join(tabla_cine %>% select(all_of(columnas_a_unir)), by = icine_col)
   
-  # 6. Calcular y unir la desviación estándar condicional del modelo
-  #desviaciones_condicionales_df <- calcular_sd_condicional(modelos_por_cine, sufijo)
+  # 6. Calcular los IC del efecto aleatorio
+  ic_efectos_df <- calcular_IC_efectos_aleatorios(modelos_por_cine, sufijo)
   
-  #coefs_df <- coefs_df %>%
-    #left_join(desviaciones_condicionales_df, by = c(icine_col, icine_col))
+  # Unir los IC al dataframe de efectos aleatorios
+  coefs_df <- coefs_df %>%
+    left_join(ic_efectos_df, by = setNames(c("icine", "cine"), c(icine_col, cine_col)))
   
   # 7. Retornar el data frame final 
   coefs_df <- coefs_df %>%
@@ -443,9 +485,13 @@ ajustar_efectos_mixtos_por_cine <- function(
         "nombres_programas",
         "n_estudiantes",
         "promedio_punt_saberpro",
-        nombre_intercepto
+        nombre_intercepto,
+        paste0("efecto_", sufijo),
+        paste0("sd_", sufijo),
+        paste0("ic_inf_", sufijo),
+        paste0("ic_sup_", sufijo)
       ))
-    )  %>% arrange(!!sym(cine_col), desc(!!sym(nombre_intercepto)))
+    ) %>% arrange(!!sym(cine_col), desc(!!sym(nombre_intercepto)))
 
 
   return(coefs_df)
@@ -501,10 +547,42 @@ generar_valores_agregados <- function(data_filtrado, tipo_cine , anios = NULL) {
   )
   
   # Unir los resultados de efectos aleatorios por institución
+   # resumen_coefs <- resultados_pg %>%
+   #   inner_join(resultados_rc %>% select(!!icine_col, coeficiente_RC), by = icine_col) %>%
+   #   inner_join(resultados_lc %>% select(!!icine_col, coeficiente_LC), by = icine_col) %>%
+   #   relocate(coeficiente_PG, coeficiente_LC, coeficiente_RC, .after = last_col())
+  
+  #este bloque es sustito del anterior código, pues adiciona las columnas relacionadas a los intervalos de confianza 
   resumen_coefs <- resultados_pg %>%
-    inner_join(resultados_rc %>% select(!!icine_col, coeficiente_RC), by = icine_col) %>%
-    inner_join(resultados_lc %>% select(!!icine_col, coeficiente_LC), by = icine_col) %>%
+    inner_join(
+      resultados_rc %>%
+        select(
+          !!icine_col,
+          coeficiente_RC,
+          starts_with("efecto_rc"),
+          starts_with("sd_rc"),
+          starts_with("ic_inf_rc"),
+          starts_with("ic_sup_rc")
+        ),
+      by = icine_col
+    ) %>%
+    inner_join(
+      resultados_lc %>%
+        select(
+          !!icine_col,
+          coeficiente_LC,
+          starts_with("efecto_lc"),
+          starts_with("sd_lc"),
+          starts_with("ic_inf_lc"),
+          starts_with("ic_sup_lc")
+        ),
+      by = icine_col
+    ) %>%
     relocate(coeficiente_PG, coeficiente_LC, coeficiente_RC, .after = last_col())
+  
+  resumen_coefs <- resumen_coefs %>%
+    mutate(across(where(is.numeric), ~ round(.x, 2)))
+  
   
   if (!is.null(anios)) {
     resumen_coefs <- resumen_coefs %>%
@@ -529,10 +607,11 @@ generar_valores_agregados <- function(data_filtrado, tipo_cine , anios = NULL) {
 #Codigos CINE
 #ICINE
 #A nivel Bogota-Region
-data <- read_delim("data/BD/icfes_cine_programas_vigencia_2021_2022.csv", escape_double = FALSE, trim_ws = TRUE)
+data <- read_delim("data/BD/icfes_cine_programas_vigencia_2022_2023_15072025.csv", escape_double = FALSE, trim_ws = TRUE)
 
 #filtrar para bogota toda vez que los resultados que nos compartio el icfes fue a nivel bogota
 data <- data %>% filter(municipio_oferta_programa == "bogota_dc")
+
 
 #Seleccionar las columnas de interes
 data <- data %>%
@@ -585,7 +664,7 @@ data_summary_raw <- resumen_nans(data)
 ##########################################
 
 #Numero de icines y personas por CINE especifico
-n_observaciones_cine =  observaciones_por_cine(data_filtrado, "nucleo_basico_del_conocimiento")
+#n_observaciones_cine =  observaciones_por_cine(data_filtrado, "nucleo_basico_del_conocimiento")
 
 ##########################################
 #4. CORRELACION de las variables
@@ -621,11 +700,11 @@ kable(correlation_matrix_2023, caption = "Correlation Matrix")
 
 # Definir los periodos, incluyendo el total 2016-2023
 periodos <- list(
-  `2021_2022` = c(2021, 2022)
+  `2022_2023` = c(2022, 2023) #antes del 15/07/2025 era c(2021,2022). Esto porque estabamos comparando los ultimso resultandos del icfes ie., (2021,2022)
 )
 
 # Definir tipos de cine a iterar
-niveles_cine <- c("nbc")
+niveles_cine <- c("nbc", "cine_especifico")
 
 guardar_valores_agregados <- function(data, periodos, niveles_cine) {
   for (nombre_periodo in names(periodos)) {
@@ -645,7 +724,7 @@ guardar_valores_agregados <- function(data, periodos, niveles_cine) {
       dir.create(ruta_directorio, recursive = TRUE, showWarnings = FALSE)
       
       # Ruta del archivo
-      ruta_csv <- file.path(ruta_directorio, paste0("va_", nivel_cine, "_", nombre_periodo, ".csv"))
+      ruta_csv <- file.path(ruta_directorio, paste0("va_", nivel_cine, "_", nombre_periodo, "_run15072025" , ".csv"))
       
       # Guardar el resultado
       write_csv(va_resultado, ruta_csv)
