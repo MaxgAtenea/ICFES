@@ -50,6 +50,7 @@ library(stringr)#facilitar la manipulacion de caracteres
 library(plotly) #para graficas dinamicas
 library(lme4)#para la regresion de mixed models
 library(fuzzyjoin)
+library(writexl)
 ##############################################
 #Correr este bloque antes de cargar library(gt)
 #install.packages("gt")
@@ -514,6 +515,7 @@ base_cine$nombre_del_programa <- base_cine$nombre_del_programa %>%
   str_to_title() 
 
 write_csv(base_cine, "data/SNIES_CINE_cleaned/base_cine_programas_vigencia_2021_2022_15072025.csv")
+write_xlsx(base_cine, "data/SNIES_CINE_cleaned/base_cine_programas_vigencia_2021_2022_15072025.xlsx")
 
 
 #Filtrar por los programas que:
@@ -542,6 +544,8 @@ base_cine_filtrada <- stringdist_inner_join(
     nivel_de_formacion == "Universitario",
     nivel_academico == "Pregrado"
   )
+
+write_xlsx(base_cine_filtrada, "data/SNIES_CINE_cleaned/base_cine_bogota_programas_vigencia_2021_2022_15072025.xlsx")
 
 #municipios en la base_cine_filtrada
 sort(unique(base_cine_filtrada$municipio_oferta_programa))
@@ -584,4 +588,5 @@ data_summary <- resumen_nans(data)
 #3.Variable ICINE (analogo al INBC)
 
 write_csv(data, "data/BD/icfes_cine_programas_vigencia_2021_2022_15072025.csv")
+write_xlsx(data,"data/BD/icfes_cine_programas_vigencia_2021_2022_15072025.xlsx")
 
