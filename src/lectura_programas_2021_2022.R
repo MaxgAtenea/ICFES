@@ -30,7 +30,9 @@
 #   "nlme",
 #   "stringr",
 #   "plotly",
-#   "lme4"
+#   "lme4",
+#   "fuzzyjoin",
+#   "writexl"
 # ))
 
 ##################################
@@ -64,7 +66,8 @@ library(writexl)
 ##################################
 #Set working directory
 ##################################
-setwd("/home/alejandro/Documentos/ATENEA/Despacho/ICFES")
+#setwd("/home/alejandro/Documentos/ATENEA/Despacho/ICFES")
+
 
 
 ##################################
@@ -327,7 +330,9 @@ municipios <- read_delim("data/Municipios_cleaned/municipios.csv", escape_double
 #Saber pro y saber 11
 
 #Leer la base consolidada del Saber Pro cruzado con Saber 11
-icfes <- read_delim("data/BD/saber11_nacional_saberpro_bogota_region.csv", escape_double = FALSE, trim_ws = TRUE)
+#icfes <- read_delim("data/BD/saber11_nacional_saberpro_bogota_region.csv", escape_double = FALSE, trim_ws = TRUE)
+
+icfes <- read_delim("data/BD/nacional_saber11_saberpro.csv", escape_double = FALSE, trim_ws = TRUE)
 
 #Limpiar la columna estu_nucleo_pregrado y actualizarla en el dataframe
 #sutilezas en la redaccion generan campos duplicados
@@ -452,7 +457,7 @@ codigos_cine <- codigos_cine %>%
 cine_snies_2021 <- read_excel("data/SNIES_CINE_raw/programas_nivel_nacional_vigencia_2021.xlsx")
 cine_snies_2022 <- read_excel("data/SNIES_CINE_raw/programas_nivel_nacional_vigencia_2022.xlsx")
 
-# Se agrega identificador del periodo vigencia del cual se descargaron los datos de la página del SNIES
+# Se agrega identificador del periodo vigencia, filtro con el cual cual se descargaron los datos de la página del SNIES
 cine_snies_2021 <- cine_snies_2021 %>%
   mutate(periodo_vigencia_descargado_pagina_snies = 2021)
 
@@ -532,13 +537,19 @@ bogota_region_df <- data.frame(
 )
 
 #hacer filtro de bogota region con un fuzzy join
-base_cine_filtrada <- stringdist_inner_join(
-  base_cine,
-  bogota_region_df,
-  by = c("municipio_oferta_programa" = "municipio"),
-  method = "jw",         # Jaro-Winkler
-  max_dist = 0.05        # Ajusta este umbral según tus datos
-) %>%
+# base_cine_filtrada <- stringdist_inner_join(
+#   base_cine,
+#   bogota_region_df,
+#   by = c("municipio_oferta_programa" = "municipio"),
+#   method = "jw",         # Jaro-Winkler
+#   max_dist = 0.05        # Ajusta este umbral según tus datos
+# ) %>%
+#   filter(
+#     estado_programa == "Activo",
+#     nivel_de_formacion == "Universitario",
+#     nivel_academico == "Pregrado"
+#   )
+base_cine_filtrada <- base_cine %>%
   filter(
     estado_programa == "Activo",
     nivel_de_formacion == "Universitario",
@@ -550,7 +561,7 @@ write_xlsx(base_cine_filtrada, "data/SNIES_CINE_cleaned/base_cine_bogota_program
 #municipios en la base_cine_filtrada
 sort(unique(base_cine_filtrada$municipio_oferta_programa))
 
-#3. Cruzar informacion del icfes con la informacion del CINE
+#3.1 Cruzar informacion del icfes con la informacion del CINE, filtrando por estado de programa
 #Hacer left join con la base icfes y base_cine
 #Nota: 31 codigos snies en la bd icfes no encontraron match en la bd del snies
 data <- left_join(
@@ -587,6 +598,6 @@ data_summary <- resumen_nans(data)
 #2.Nombres y codigos cine de programas universitarios de pregrado activos en bogota
 #3.Variable ICINE (analogo al INBC)
 
-write_csv(data, "data/BD/icfes_cine_programas_vigencia_2021_2022_15072025.csv")
-write_xlsx(data,"data/BD/icfes_cine_programas_vigencia_2021_2022_15072025.xlsx")
+write_csv(data, "data/BD/icfes_cine_programas_vigencia_2021_2022_cruce_nacional.csv")
+write_xlsx(data,"data/BD/icfes_cine_programas_vigencia_2021_2022_cruce_nacional.xlsx")
 

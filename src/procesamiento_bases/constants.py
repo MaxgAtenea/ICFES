@@ -213,7 +213,7 @@ dtype_mapping_saber11 = {
     "estu_genero": "str",
     "estu_etnia": "str",
     "estu_discapacidad": "str",
-    "estu_dedicacionlecturadiaria" : "str,
+    "estu_dedicacionlecturadiaria" : "str"
 }
 
 dtype_mapping_saberpro = {
