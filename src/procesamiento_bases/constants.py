@@ -245,22 +245,22 @@ dtype_mapping_saberpro = {
 #llave:nombre archivo
 #valor: separador
 nombre_archivos_sabertyt = {
-    "SaberTyT_2020-1.txt":"¬",
-    "SaberTyT_2020-2.txt":"¬",
-    "SaberTyT_2021-1.txt":"¬",
-    "SaberTyT_2021-2.txt":"¬",
-    "SaberTyT_2022-1.txt":"¬",
-    "SaberTyT_2022-2.txt":"¬",
-    "SaberTyT_2023-1.txt":";",
-    "SaberTyT_2023-2.txt":";"
+    "Examen_Saber_TyT_Genericas_2020.txt":";",
+    "Examen_Saber_TyT_Genericas_2021.txt":";",
+    "Examen_Saber_TyT_Genericas_2022.txt":";",
+    "Examen_Saber_TyT_Genericas_2023.txt":";",
+    "Examen_Saber_TyT_Genericas_2024.txt":";"
 } 
 
 cols_saber_tyt_lower = [
     "periodo", #periodo de presentacion de la prueba
     "estu_consecutivo", #id publico del estudiante
+    "mod_ingles_punt", #puntaje en ingles
+    "mod_competen_ciudada_punt", #puntaje en competencias ciudadanas
+    "mod_comuni_escrita_punt", #puntaje en comunicacion escrita
     "mod_razona_cuantitat_punt", #puntaje en razonamiento cuantitativo
     "mod_lectura_critica_punt", #puntaje en lectura critica
-    "punt_global", #puntaje global 
+    #"punt_global", #puntaje global #Quedo deprecated en la actualizacion del 31 de julio
     "inst_cod_institucion", #Codigo de la Institución de  Educación Superior
     "inst_nombre_institucion", #Nombre de la Institución de  Educación Superior
     "estu_prgm_academico", # Nombre del programa académico  que estudia
@@ -274,8 +274,11 @@ cols_saber_tyt_lower = [
 dtype_mapping_sabertyt =  {
     #"periodo" : "Int64", 
     "estu_consecutivo":"string" ,
-    "mod_razona_cuantitat_punt": float,
-    "mod_lectura_critica_punt": float,
+    "mod_ingles_punt": float, #puntaje en ingles
+    "mod_competen_ciudada_punt": float, #puntaje en competencias ciudadanas
+    "mod_comuni_escrita_punt": float, #puntaje en comunicacion escrita
+    "mod_razona_cuantitat_punt": float, #puntaje en razonamiento cuantitativo
+    "mod_lectura_critica_punt": float, #puntaje en lectura critica
     "punt_global":float, 
     #"inst_cod_institucion":"Int64",
     "inst_nombre_institucion" :"string", 
